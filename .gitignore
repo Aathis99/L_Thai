@@ -1,0 +1,14 @@
+data/
+node_modules/
+*.log
+.env
+.qa/
+.next/
+dist/
+*.tsbuildinfo
+*.xls
+*.xlsx
+.env.*
+!.env.example
+.tools/
+docs/screenshots/

@@ -1,0 +1,21 @@
+{
+  "name": "lthai-factory", "version": "0.2.0", "private": true, "type": "module",
+  "workspaces": ["apps/api", "apps/web"],
+  "description": "ระบบพนักงานและสิทธิ์สำหรับโรงงานกระเบื้อง",
+  "engines": { "node": ">=26" },
+  "scripts": {
+    "dev": "node scripts/run-apps.mjs dev",
+    "start": "node scripts/run-apps.mjs start",
+    "build": "node scripts/build.mjs",
+    "test": "npm run test:legacy && npm run test --workspace=@lthai/api && npm run test --workspace=@lthai/web",
+    "test:legacy": "node --test tests/access.test.mjs",
+    "check": "npm run typecheck --workspace=@lthai/api && npm run typecheck --workspace=@lthai/web",
+    "db:up": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/database/start.ps1",
+    "db:backup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/database/backup.ps1",
+    "db:docker": "docker compose up -d db",
+    "db:migrate": "npm run db:migrate --workspace=@lthai/api",
+    "data:migrate": "npm run data:migrate --workspace=@lthai/api",
+    "employees:import": "npm run employees:import --workspace=@lthai/api",
+    "legacy": "node server.mjs"
+  }
+}

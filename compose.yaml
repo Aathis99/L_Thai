@@ -1,0 +1,24 @@
+name: lthai
+
+services:
+  pg:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: lthai
+      POSTGRES_USER: lthai
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env before starting PostgreSQL}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - lthai_pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lthai -d lthai"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  lthai_pgdata:
+    name: lthai_pgdata
