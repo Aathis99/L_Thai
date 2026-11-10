@@ -1,5 +1,9 @@
 # LThai Factory · Next.js / Express / PostgreSQL
 
+หน้าบ้านใช้ Tailwind CSS v4 + PostCSS แล้ว: [แนวทาง CSS และการเพิ่มหน้าจอ](docs/tailwind.md) รวม theme สี/ฟอนต์และ reusable components ไว้ในโปรเจกต์ ไม่มี CSS CDN ระหว่างใช้งาน
+
+รันทั้งระบบผ่าน Docker ได้แล้ว: ดู [คู่มือ Docker](docs/docker.md) ชุด Docker เปิด http://127.0.0.1:3001 และใช้ฐานข้อมูลสำเนาแยกพอร์ต 5434 จากชุด Windows ด้านล่าง
+
 ระบบพนักงานและสิทธิ์ภาษาไทยสำหรับโรงงานกระเบื้อง ระยะนี้ย้ายเป็น Next.js + React + TypeScript (หน้าบ้าน), Node.js + Express + TypeScript (API) และ PostgreSQL จริง โดยไม่ใช้ SQLite เป็นฐานข้อมูลหลักอีกแล้ว
 
 ## เปิดใช้งานบนเครื่องนี้

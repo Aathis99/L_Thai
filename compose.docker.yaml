@@ -1,0 +1,56 @@
+name: lthai-docker
+services:
+  pg:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: lthai
+      POSTGRES_USER: lthai
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - docker_pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lthai -d lthai"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+  api:
+    build:
+      context: .
+      target: api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://lthai:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@pg:5432/lthai
+      API_HOST: 0.0.0.0
+      API_PORT: 4000
+      API_INTERNAL_HOSTS: api
+      APP_ORIGINS: http://127.0.0.1:3001,http://localhost:3001
+    depends_on:
+      pg:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  web:
+    build:
+      context: .
+      target: web
+      args:
+        API_INTERNAL_URL: http://api:4000
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+volumes:
+  docker_pgdata:

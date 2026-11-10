@@ -5,7 +5,7 @@ import {createApplication} from './app.js';
 const pool=new pg.Pool({connectionString:databaseUrl(),max:10});
 await migrate(pool);
 const origins=(process.env.APP_ORIGINS||'http://127.0.0.1:3000,http://localhost:3000').split(',').map(s=>s.trim()).filter(Boolean);
-const {server}=createApplication(pool,{origins,secureCookies:process.env.COOKIE_SECURE==='true'});
+const {server}=createApplication(pool,{origins,secureCookies:process.env.COOKIE_SECURE==='true',internalHosts:(process.env.API_INTERNAL_HOSTS||'').split(',').map(s=>s.trim()).filter(Boolean)});
 const port=Number(process.env.API_PORT||4000),host=process.env.API_HOST||'127.0.0.1';
 server.listen(port,host,()=>console.log(`LThai Express API: http://${host}:${port} (PostgreSQL)`));
 server.on('error',async(error:NodeJS.ErrnoException)=>{console.error(error.code==='EADDRINUSE'?`พอร์ต ${port} ถูกใช้แล้ว`:error.code);await pool.end();process.exitCode=1;});
