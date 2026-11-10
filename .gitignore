@@ -1,4 +1,5 @@
 data/
+*.handoff-partial
 node_modules/
 *.log
 .env
