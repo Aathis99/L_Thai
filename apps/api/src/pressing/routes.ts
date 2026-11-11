@@ -2,7 +2,9 @@ import type { Request, Response } from 'express';
 import { fail } from '../auth.js';
 import { audit, type Db } from '../database.js';
 import { createOrder, listOrders, listTypes, listWorkers, removeType, saveType, updateOrderTarget } from './catalog.js';
-import { listEntries, listStock, recordEntry, recordOpening } from './stock.js';
+import {
+  confirmOpeningReady, listEntries, listIssues, listStock, recordEntry, recordIssue, recordOpening, releaseSurplus,
+} from './stock.js';
 
 export interface PressingAccess {
   db: Db;
@@ -37,6 +39,29 @@ export async function handlePressingRoute(req: Request, res: Response, access: P
   if (method === 'POST' && req.path === '/pressing/opening') {
     const id = await access.mutate('pressing.manage', (db, actor) => recordOpening(db, body, actor));
     res.status(201).json({ id });
+    return true;
+  }
+
+  if (method === 'GET' && req.path === '/pressing/issues') {
+    access.require('pressing.read');
+    res.json({ items: await listIssues(access.db) });
+    return true;
+  }
+  if (method === 'POST' && req.path === '/pressing/issues') {
+    const id = await access.mutate('pressing.issue', (db, actor) => recordIssue(db, body, actor));
+    res.status(201).json({ id });
+    return true;
+  }
+  if (method === 'POST' && req.path === '/pressing/releases') {
+    const id = await access.mutate('pressing.release', (db, actor) => releaseSurplus(db, body, actor));
+    res.status(201).json({ id });
+    return true;
+  }
+  const readyMatch = req.path.match(/^\/pressing\/stock\/([^/]+)\/ready$/);
+  if (method === 'POST' && readyMatch) {
+    const id = await access.mutate('pressing.issue',
+      (db, actor) => confirmOpeningReady(db, routeId(readyMatch[1]), body, actor));
+    res.json({ id });
     return true;
   }
 

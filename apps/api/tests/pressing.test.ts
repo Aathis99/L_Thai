@@ -321,4 +321,212 @@ test('pressing catalog, orders and worker selection use session permissions', as
     assert.equal((await press('/opening', 'POST', opening, reader)).status, 403);
     assert.equal((await press('/entries?order_id=' + orderId)).body.items[0].pieces, 12);
   });
+
+  const findSource = async (entryId: number) => {
+    const { items } = (await press('/stock')).body;
+    const source = items.find((row: { entry_id: number | null }) => row.entry_id === entryId);
+    assert.ok(source);
+    return source;
+  };
+
+  async function receive(orderId: number, pressedOn = '2024-02-29') {
+    const receipt = await press('/entries', 'POST', { ...entryInput(orderId, 2), pressed_on: pressedOn });
+    assert.equal(receipt.status, 201);
+    return findSource(receipt.body.id);
+  }
+
+  const issueLine = (source_id: number, pieces: number, allocation: 'general' | 'order' = 'general') =>
+    ({ source_id, pieces, allocation });
+  const issueInput = (type_id: number, lines: ReturnType<typeof issueLine>[]) => ({
+    request_id: randomUUID(), type_id, lines, destination: 'color', confirmed_ready: true,
+  });
+
+  await t.test('a confirmed withdrawal deducts only once and retains its original lines', async () => {
+    const { orderId, typeId } = await makeOrder('stock', 1500);
+    const source = await receive(orderId);
+    const input = { ...issueInput(typeId, [issueLine(source.id, 200), issueLine(source.id, 400)]), pooled: true };
+    const issued = await press('/issues', 'POST', input);
+    assert.equal(issued.status, 201);
+    const { remaining_pieces, general_pieces, restricted_pieces } = await findSource(source.entry_id);
+    assert.deepEqual({ remaining_pieces, general_pieces, restricted_pieces }, {
+      remaining_pieces: 900, general_pieces: 900, restricted_pieces: 0,
+    });
+    const listing = await press('/issues');
+    assert.equal(listing.status, 200);
+    const saved = listing.body.items.find((row: { id: number }) => row.id === issued.body.id);
+    assert.equal(saved.order_id, null);
+    assert.equal(saved.type_id, typeId);
+    assert.equal(saved.destination, 'color');
+    assert.equal(saved.confirmed_ready, true);
+    assert.equal(saved.pooled, true);
+    assert.equal(saved.issued_by_username, 'admin');
+    assert.ok(Number.isFinite(Date.parse(saved.issued_at)));
+    assert.equal(saved.lines.length, 1);
+    assert.ok(Number.isInteger(saved.lines[0].id));
+    assert.deepEqual(saved.lines[0], { id: saved.lines[0].id, ...issueLine(source.id, 600) });
+    const replay = await press('/issues', 'POST', { ...input, lines: [...input.lines].reverse() });
+    assert.equal(replay.status, 201);
+    assert.deepEqual(replay.body, issued.body);
+    assert.equal((await press('/issues', 'POST', { ...input, lines: [issueLine(source.id, 600)] })).status, 409);
+    assert.equal((await press('/issues', 'POST', { ...input, pooled: false })).status, 409);
+    assert.equal((await findSource(source.entry_id)).remaining_pieces, 900);
+    await migrate(pool);
+    assert.deepEqual((await press('/issues')).body, listing.body);
+    const audit = (await call('/audit', 'GET', undefined, admin)).body.items;
+    assert.equal(audit.filter((row: { actor: string; target: string; action: string }) =>
+      row.actor === 'admin' && row.target === String(issued.body.id) && row.action === 'ยืนยันเบิกสต็อกงานปั๊ม').length, 1);
+  });
+
+  await t.test('a withdrawal checks the Bangkok rest date, recorded destination, type, and confirmation', async () => {
+    const { orderId, typeId } = await makeOrder('stock', 1500);
+    const resting = await receive(orderId, '2099-01-29');
+    assert.equal((await press('/issues', 'POST', issueInput(typeId, [issueLine(resting.id, 200)]))).status, 409);
+    const color = await receive(orderId);
+    assert.equal((await press('/types/' + typeId, 'PUT', { ...tile, destination: 'kiln' })).status, 200);
+    const kiln = await receive(orderId);
+    const input = issueInput(typeId, [issueLine(color.id, 200)]);
+    const wrongType = await makeOrder('customer', 1000);
+    for (const invalid of [
+      { destination: 'kiln' }, { confirmed_ready: false }, { type_id: wrongType.typeId },
+      { order_id: wrongType.orderId },
+    ]) assert.equal((await press('/issues', 'POST', { ...input, ...invalid })).status, 409);
+    assert.equal((await press('/issues', 'POST', input)).status, 201);
+    const kilnInput = issueInput(typeId, [issueLine(kiln.id, 200)]);
+    assert.equal((await press('/issues', 'POST', kilnInput)).status, 409);
+    assert.equal((await press('/issues', 'POST', { ...kilnInput, destination: 'kiln' })).status, 201);
+  });
+
+  await t.test('only one concurrent withdrawal of 900 can commit against 1500 pieces', async () => {
+    const { orderId, typeId } = await makeOrder('stock', 1500);
+    const source = await receive(orderId);
+    const inputs = [issueInput(typeId, [issueLine(source.id, 900)]), issueInput(typeId, [issueLine(source.id, 900)])];
+    const results = await Promise.all(inputs.map(input => press('/issues', 'POST', input)));
+    const statuses = results.map(result => result.status);
+    assert.deepEqual(statuses.sort(), [201, 409]);
+    assert.equal((await findSource(source.entry_id)).remaining_pieces, 600);
+    const winner = results.findIndex(result => result.status === 201);
+    const replay = await press('/issues', 'POST', inputs[winner]);
+    assert.equal(replay.status, 201);
+    assert.deepEqual(replay.body, results[winner].body);
+    assert.equal((await findSource(source.entry_id)).remaining_pieces, 600);
+  });
+
+  await t.test('aggregated duplicate lines cannot overdraw and a rejected withdrawal leaves every source intact', async () => {
+    const { orderId, typeId } = await makeOrder('stock', 1500);
+    const first = await receive(orderId);
+    const second = await receive(orderId);
+    const before = await press('/issues');
+    const input = issueInput(typeId, [issueLine(first.id, 400), issueLine(second.id, 800), issueLine(second.id, 800)]);
+    assert.equal((await press('/issues', 'POST', input)).status, 409);
+    assert.equal((await findSource(first.entry_id)).remaining_pieces, 1500);
+    assert.equal((await findSource(second.entry_id)).remaining_pieces, 1500);
+    assert.deepEqual((await press('/issues')).body, before.body);
+    assert.equal((await press('/issues', 'POST', { ...input, lines: [issueLine(first.id, 400), issueLine(second.id, 400)] })).status, 201);
+    assert.equal((await findSource(first.entry_id)).remaining_pieces, 1100);
+    assert.equal((await findSource(second.entry_id)).remaining_pieces, 1100);
+  });
+
+  await t.test('released excess becomes general stock and the rest stays reserved for the original order', async () => {
+    const { orderId, typeId } = await makeOrder('customer', 1000);
+    const consumingOrder = await press('/orders', 'POST', {
+      type_id: typeId, purpose: 'customer', target_pieces: 500, customer_reference: 'SALE-03',
+    });
+    assert.equal(consumingOrder.status, 201);
+    const source = await receive(orderId);
+    const release = { request_id: randomUUID(), source_id: source.id, pieces: 500 };
+    const otherOrder = { ...issueInput(typeId, [issueLine(source.id, 500)]), order_id: consumingOrder.body.id };
+    assert.equal((await press('/issues', 'POST', otherOrder)).status, 409);
+    assert.equal((await press('/issues', 'POST', { ...otherOrder, lines: [issueLine(source.id, 500, 'order')] })).status, 409);
+    assert.equal((await press('/releases', 'POST', { ...release, pieces: 501 })).status, 409);
+    const released = await press('/releases', 'POST', release);
+    assert.equal(released.status, 201);
+    const { remaining_pieces, general_pieces, restricted_pieces, ready_on } = await findSource(source.entry_id);
+    assert.deepEqual({ remaining_pieces, general_pieces, restricted_pieces, ready_on }, {
+      remaining_pieces: 1500, general_pieces: 500, restricted_pieces: 1000, ready_on: '2024-03-04',
+    });
+    assert.equal((await press('/releases', 'POST', { ...release, request_id: randomUUID(), pieces: 1 })).status, 409);
+    assert.equal((await press('/issues', 'POST', { ...otherOrder, lines: [issueLine(source.id, 501)] })).status, 409);
+    assert.equal((await press('/issues', 'POST', otherOrder)).status, 201);
+    assert.equal((await press('/issues', 'POST', issueInput(typeId, [issueLine(source.id, 600, 'order')]))).status, 409);
+    const sameOrder = { ...issueInput(typeId, [issueLine(source.id, 600, 'order')]), order_id: orderId };
+    assert.equal((await press('/issues', 'POST', sameOrder)).status, 201);
+    assert.equal((await findSource(source.entry_id)).remaining_pieces, 400);
+    const replay = await press('/releases', 'POST', release);
+    assert.equal(replay.status, 201);
+    assert.deepEqual(replay.body, released.body);
+    assert.equal((await press('/releases', 'POST', { ...release, pieces: 499 })).status, 409);
+    assert.equal((await findSource(source.entry_id)).general_pieces, 0);
+    const audit = (await call('/audit', 'GET', undefined, admin)).body.items;
+    assert.equal(audit.filter((row: { actor: string; target: string; action: string }) =>
+      row.actor === 'admin' && row.target === String(released.body.id) && row.action === 'ปล่อยยอดปั๊มส่วนเกิน').length, 1);
+  });
+
+  await t.test('releases count excess across the order and never exceed the selected source balance', async () => {
+    const { orderId, typeId } = await makeOrder('customer', 2000);
+    const first = await receive(orderId);
+    const second = await receive(orderId, '2099-01-29');
+    const consume = { ...issueInput(typeId, [issueLine(first.id, 1200, 'order')]), order_id: orderId };
+    assert.equal((await press('/issues', 'POST', consume)).status, 201);
+    const release = { request_id: randomUUID(), source_id: first.id, pieces: 400 };
+    assert.equal((await press('/releases', 'POST', release)).status, 409);
+    assert.equal((await press('/releases', 'POST', { ...release, pieces: 300 })).status, 201);
+    const secondRelease = { request_id: randomUUID(), source_id: second.id, pieces: 701 };
+    assert.equal((await press('/releases', 'POST', secondRelease)).status, 409);
+    assert.equal((await press('/releases', 'POST', { ...secondRelease, pieces: 700 })).status, 201);
+    const stillResting = await findSource(second.entry_id);
+    assert.equal(stillResting.general_pieces, 700);
+    assert.equal(stillResting.ready, false);
+    assert.equal(stillResting.ready_on, second.ready_on);
+  });
+
+  await t.test('undated opening stock can be confirmed once without changing the opening request', async () => {
+    const { typeId } = await makeOrder('stock', 1500);
+    const opening = { source_key: 'ready-later', type_id: typeId, as_of: '2024-02-29', pieces: 500, ready_confirmed: false };
+    const created = await press('/opening', 'POST', opening);
+    assert.equal(created.status, 201);
+    const dated = await press('/opening', 'POST', { ...opening, source_key: 'wait-until-date', ready_on: '2099-02-02' });
+    assert.equal(dated.status, 201);
+    const issue = issueInput(typeId, [issueLine(created.body.id, 400)]);
+    const readyPath = '/stock/' + created.body.id + '/ready';
+    assert.equal((await press('/issues', 'POST', issue)).status, 409);
+    assert.equal((await press('/stock/' + dated.body.id + '/ready', 'POST', { confirmed_ready: true })).status, 409);
+    assert.equal((await press(readyPath, 'POST', { confirmed_ready: false })).status, 400);
+    const confirmations = await Promise.all([1, 2].map(() => press(readyPath, 'POST', { confirmed_ready: true })));
+    assert.deepEqual(confirmations.map(result => result.status), [200, 200]);
+    assert.deepEqual(confirmations[0].body, confirmations[1].body);
+    assert.deepEqual((await press('/opening', 'POST', opening)).body, created.body);
+    assert.equal((await press('/opening', 'POST', { ...opening, ready_confirmed: true })).status, 409);
+    assert.equal((await press('/issues', 'POST', issue)).status, 201);
+    const audit = (await call('/audit', 'GET', undefined, admin)).body.items;
+    assert.equal(audit.filter((row: { actor: string; target: string; action: string }) =>
+      row.actor === 'admin' && row.target === String(created.body.id) && row.action === 'ยืนยันความพร้อมยอดตั้งต้น').length, 1);
+  });
+
+  await t.test('withdrawal and release validate payloads and require their own permissions', async () => {
+    const { orderId, typeId } = await makeOrder('customer', 1000);
+    const source = await receive(orderId);
+    const release = { request_id: randomUUID(), source_id: source.id, pieces: 400 };
+    const issue = { ...issueInput(typeId, [issueLine(source.id, 400, 'order')]), order_id: orderId };
+    assert.equal((await press('/issues', 'POST', issue, reader)).status, 403);
+    assert.equal((await press('/releases', 'POST', release, reader)).status, 403);
+    assert.equal((await press('/stock/' + source.id + '/ready', 'POST', { confirmed_ready: true }, reader)).status, 403);
+    for (const invalid of [
+      { request_id: 'invalid\u0000' }, { lines: [] }, { lines: [null] },
+      { lines: [issueLine(source.id, 0)] }, { lines: [issueLine(source.id, 1.5)] },
+      { lines: [{ ...issue.lines[0], allocation: 'customer' }] }, { destination: 'paint' },
+      { confirmed_ready: 'true' }, { pooled: null },
+    ]) assert.equal((await press('/issues', 'POST', { ...issue, ...invalid })).status, 400);
+    for (const invalid of [{ source_id: '1' }, { pieces: 0 }, { pieces: 2147483648 }, { request_id: 'bad\u0000' }])
+      assert.equal((await press('/releases', 'POST', { ...release, ...invalid })).status, 400);
+    assert.equal((await call('/roles/' + role.body.id, 'PUT', {
+      name: 'ปล่อยยอดเกิน', permissions: ['pressing.read', 'pressing.release'],
+    }, admin)).status, 200);
+    assert.equal((await press('/releases', 'POST', release, reader)).status, 201);
+    assert.equal((await press('/issues', 'POST', issue, reader)).status, 403);
+    assert.equal((await call('/roles/' + role.body.id, 'PUT', {
+      name: 'ยืนยันเบิก', permissions: ['pressing.read', 'pressing.issue'],
+    }, admin)).status, 200);
+    assert.equal((await press('/issues', 'POST', issue, reader)).status, 201);
+    assert.equal((await press('/releases', 'POST', release, reader)).status, 403);
+  });
 });

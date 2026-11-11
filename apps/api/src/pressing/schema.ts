@@ -63,5 +63,38 @@ export async function migratePressing(db: Db): Promise<void> {
       )
     );
     CREATE INDEX IF NOT EXISTS pressing_stock_sources_type_id_idx ON pressing_stock_sources(type_id);
+    ALTER TABLE pressing_stock_sources ADD COLUMN IF NOT EXISTS ready_confirmed_later BOOLEAN NOT NULL DEFAULT false
+      CHECK (NOT ready_confirmed_later OR (entry_id IS NULL AND ready_on IS NULL));
+
+    CREATE TABLE IF NOT EXISTS pressing_issues (
+      id SERIAL PRIMARY KEY,
+      request_id TEXT NOT NULL UNIQUE,
+      request_payload JSONB NOT NULL,
+      type_id INTEGER NOT NULL REFERENCES pressing_types(id),
+      order_id INTEGER REFERENCES pressing_orders(id),
+      destination TEXT NOT NULL CHECK (destination IN ('color', 'kiln')),
+      confirmed_ready BOOLEAN NOT NULL CHECK (confirmed_ready),
+      pooled BOOLEAN NOT NULL DEFAULT false,
+      issued_by INTEGER NOT NULL REFERENCES users(id),
+      issued_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS pressing_issue_lines (
+      id SERIAL PRIMARY KEY,
+      issue_id INTEGER NOT NULL REFERENCES pressing_issues(id),
+      source_id INTEGER NOT NULL REFERENCES pressing_stock_sources(id),
+      pieces INTEGER NOT NULL CHECK (pieces > 0),
+      allocation TEXT NOT NULL CHECK (allocation IN ('general', 'order')),
+      UNIQUE (issue_id, source_id, allocation)
+    );
+    CREATE INDEX IF NOT EXISTS pressing_issue_lines_source_id_idx ON pressing_issue_lines(source_id);
+    CREATE TABLE IF NOT EXISTS pressing_releases (
+      id SERIAL PRIMARY KEY,
+      request_id TEXT NOT NULL UNIQUE,
+      source_id INTEGER NOT NULL REFERENCES pressing_stock_sources(id),
+      pieces INTEGER NOT NULL CHECK (pieces > 0),
+      released_by INTEGER NOT NULL REFERENCES users(id),
+      released_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS pressing_releases_source_id_idx ON pressing_releases(source_id);
   `);
 }
