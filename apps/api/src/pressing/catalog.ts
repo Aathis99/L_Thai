@@ -15,11 +15,19 @@ export function integer(value: unknown, label: string, minimum = 1): number {
   return value;
 }
 
+export function calendarDate(value: unknown, label: string): string {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !value.startsWith('0000')) {
+    const date = new Date(value + 'T00:00:00Z');
+    if (Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value) return value;
+  }
+  fail(`กรุณาระบุ${label}ให้ถูกต้อง (YYYY-MM-DD)`);
+}
+
 export function pressingText(value: unknown, label: string, required: true): string;
 export function pressingText(value: unknown, label: string, required: false): string | null;
 export function pressingText(value: unknown, label: string, required: boolean): string | null {
   const normalized = text(value ?? undefined, label, required);
-  if (normalized.includes('\u0000')) fail(`กรุณาระบุ${label}ให้ถูกต้อง`);
+  if (/[\u0000\uD800-\uDFFF]/u.test(normalized)) fail(`กรุณาระบุ${label}ให้ถูกต้อง`);
   return normalized || null;
 }
 
@@ -55,7 +63,8 @@ export async function saveType(db: Db, body: Body, id?: number): Promise<number>
 
 export async function removeType(db: Db, id: number): Promise<boolean> {
   const { referenced } = await one(db, `SELECT EXISTS (SELECT 1 FROM pressing_orders WHERE type_id=$1)
-    OR EXISTS (SELECT 1 FROM pressing_stock_sources WHERE type_id=$1) AS referenced`, [id]);
+    OR EXISTS (SELECT 1 FROM pressing_stock_sources WHERE type_id=$1)
+    OR EXISTS (SELECT 1 FROM pressing_sort_results WHERE type_id=$1) AS referenced`, [id]);
   const query = referenced ? 'UPDATE pressing_types SET active=false WHERE id=$1 RETURNING id'
     : 'DELETE FROM pressing_types WHERE id=$1 RETURNING id';
   if (!(await one(db, query, [id]))) fail('ไม่พบประเภทกระเบื้อง', 404);

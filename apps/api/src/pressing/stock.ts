@@ -1,17 +1,9 @@
 import { fail } from '../auth.js';
 import { all, audit, one, type Db } from '../database.js';
-import { integer, pressingText } from './catalog.js';
+import { calendarDate, integer, pressingText } from './catalog.js';
 
 type Body = Record<string, unknown>;
 type Recorder = { id: number; username: string };
-
-function calendarDate(value: unknown, label: string): string {
-  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !value.startsWith('0000')) {
-    const date = new Date(value + 'T00:00:00Z');
-    if (Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value) return value;
-  }
-  fail(`กรุณาระบุ${label}ให้ถูกต้อง (YYYY-MM-DD)`);
-}
 
 function restEnd(pressedOn: string, restDays: number): string {
   const date = new Date(pressedOn + 'T00:00:00Z');

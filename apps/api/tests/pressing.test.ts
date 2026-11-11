@@ -108,12 +108,15 @@ test('pressing catalog, orders and worker selection use session permissions', as
       { width: 0 }, { length: '1' }, { clay: 'red' }, { pieces_per_rack: 1.2 },
       { rest_days: -1 }, { destination: 'paint' }, { pieces_per_sqm: 0 },
       { name: 'ชื่อ\u0000' }, { clay_color: 'สี\u0000' },
+      { name: 'ชื่อ\uD800' }, { clay_color: 'สี\uDFFF' },
     ]) {
       assert.equal((await press('/types', 'POST', { ...tile, ...invalid })).status, 400);
     }
-    const unused = await press('/types', 'POST', { ...tile, clay: 'สี', clay_color: 'ทดสอบ', destination: 'kiln' });
+    const unused = await press('/types', 'POST', { ...tile, clay: 'สี', clay_color: 'ทดสอบ🧱', destination: 'kiln' });
     assert.equal(unused.status, 201);
     const unusedPath = '/types/' + unused.body.id;
+    const created = (await press('/types')).body.items.find((row: { id: number }) => row.id === unused.body.id);
+    assert.equal(created.clay_color, 'ทดสอบ🧱');
     const saved = await press(unusedPath, 'PUT', { ...tile, clay: 'จ้อ', rest_days: 0 });
     assert.equal(saved.status, 200);
     assert.deepEqual(saved.body, { id: unused.body.id });
@@ -733,5 +736,133 @@ test('pressing catalog, orders and worker selection use session permissions', as
       row.target === String(source.entry_id) && row.action === 'ปรับยอดปั๊ม').length, 2);
     assert.equal(audit.filter((row: { target: string; action: string }) =>
       row.target === String(issued.body.id) && row.action === 'ย้อนรายการเบิกงานปั๊ม').length, 1);
+  });
+
+  await t.test('pooled sorting preserves stock and reports only the latest revision of each tile type', async () => {
+    const { orderId, typeId } = await makeOrder('stock', 1500);
+    const firstSource = await receive(orderId);
+    const secondWorker = await call('/employees', 'POST', { code: 'EMP-KILN', name: 'คนปั๊มอีกคน' }, admin);
+    assert.equal(secondWorker.status, 201);
+    const secondReceipt = await press('/entries', 'POST', {
+      ...entryInput(orderId, 2), pressed_on: '2024-02-29', employee_id: secondWorker.body.id,
+    });
+    assert.equal(secondReceipt.status, 201);
+    const secondSource = await findSource(secondReceipt.body.id);
+    const pooled = await press('/issues', 'POST', {
+      ...issueInput(typeId, [issueLine(firstSource.id, 800), issueLine(secondSource.id, 700)]), pooled: true,
+    });
+    assert.equal(pooled.status, 201);
+    const remaining = async () => [
+      (await findSource(firstSource.entry_id)).remaining_pieces,
+      (await findSource(secondSource.entry_id)).remaining_pieces,
+    ];
+    assert.deepEqual(await remaining(), [700, 800]);
+
+    const kilnPath = '/kiln-jobs';
+    const jobInput = { request_id: randomUUID(), reference: ' เตา 🧱 A ', fired_on: '2024-03-08' };
+    const job = await press(kilnPath, 'POST', jobInput);
+    assert.equal(job.status, 201);
+    assert.deepEqual((await press(kilnPath, 'POST', { ...jobInput, reference: 'เตา 🧱 A' })).body, job.body);
+    assert.equal((await press(kilnPath, 'POST', { ...jobInput, fired_on: '2024-03-09' })).status, 409);
+    const path = kilnPath + '/' + job.body.id + '/results';
+    const input = {
+      request_id: randomUUID(), type_id: typeId, sorted_on: '2024-03-09',
+      good_pieces: 1480, waste_pieces: 20, issue_ids: [pooled.body.id],
+    };
+    const submissions = await Promise.all([press(path, 'POST', input), press(path, 'POST', input)]);
+    assert.deepEqual(submissions.map(response => response.status), [201, 201]);
+    const [first, retry] = submissions;
+    assert.deepEqual(retry.body, first.body);
+    assert.equal((await press(path, 'POST', { ...input, waste_pieces: 21 })).status, 409);
+    const currentJob = async () => (await press(kilnPath)).body.items.find((item: any) => item.id === job.body.id);
+    const counts = ({ good_pieces, waste_pieces }: typeof input) => ({ good_pieces, waste_pieces });
+    const initial = await currentJob();
+    assert.equal(initial.reference, 'เตา 🧱 A');
+    assert.equal(initial.fired_on, '2024-03-08');
+    assert.deepEqual(counts(initial), { good_pieces: 1480, waste_pieces: 20 });
+    assert.equal(initial.results[0].employee_id, null);
+    assert.deepEqual(initial.results[0].issue_ids, [pooled.body.id]);
+    assert.deepEqual(await remaining(), [700, 800]);
+
+    const revision = {
+      ...input, request_id: randomUUID(), good_pieces: 1475, waste_pieces: 25, correction_reason: ' นับยอดเสียใหม่ ',
+    };
+    assert.equal((await press(path, 'POST', { ...revision, correction_reason: ' ' })).status, 400);
+    const revised = await press(path, 'POST', revision);
+    assert.equal(revised.status, 201);
+    assert.deepEqual((await press(path, 'POST', input)).body, first.body);
+    assert.deepEqual((await press(path, 'POST', revision)).body, revised.body);
+    const anotherType = await press('/types', 'POST', tile);
+    assert.equal(anotherType.status, 201);
+    const anotherTypeId = anotherType.body.id;
+    assert.equal((await press(path, 'POST', {
+      ...input, request_id: randomUUID(), type_id: anotherTypeId,
+    })).status, 409);
+    const second = await press(path, 'POST', {
+      ...input, request_id: randomUUID(), type_id: anotherTypeId,
+      good_pieces: 8, waste_pieces: 2, issue_ids: [], employee_id: worker.body.id,
+    });
+    assert.equal(second.status, 201);
+    const current = await currentJob();
+    assert.deepEqual(counts(current), { good_pieces: 1483, waste_pieces: 27 });
+    assert.deepEqual(current.results.map((result: any) => [result.id, result.type_id, result.employee_id]), [
+      [revised.body.id, typeId, null], [second.body.id, anotherTypeId, worker.body.id],
+    ]);
+    assert.deepEqual(await remaining(), [700, 800]);
+    const history = await press(path);
+    assert.equal(history.status, 200);
+    assert.deepEqual(history.body.items.map((result: any) => [
+      result.id, result.revision, result.is_current, result.correction_reason, counts(result),
+    ]), [
+      [first.body.id, 1, false, null, { good_pieces: 1480, waste_pieces: 20 }],
+      [revised.body.id, 2, true, 'นับยอดเสียใหม่', { good_pieces: 1475, waste_pieces: 25 }],
+      [second.body.id, 1, true, null, { good_pieces: 8, waste_pieces: 2 }],
+    ]);
+    assert.equal(history.body.items[1].submitted_by_username, 'admin');
+    assert.ok(Number.isFinite(Date.parse(history.body.items[1].submitted_at)));
+    assert.equal((await press('/types/' + anotherTypeId, 'DELETE')).status, 200);
+    const retiredType = (await press('/types')).body.items.find((item: any) => item.id === anotherTypeId);
+    assert.equal(retiredType.active, false);
+    await migrate(pool);
+    assert.deepEqual((await press(path)).body, history.body);
+  });
+
+  await t.test('sorting validates dates and quantities and checks correction permissions separately', async () => {
+    const { typeId } = await makeOrder('stock', 1500);
+    const kilnPath = '/kiln-jobs';
+    const jobInput = { request_id: randomUUID(), fired_on: '2024-02-29' };
+    assert.equal((await press(kilnPath, 'GET', undefined, '')).status, 401);
+    assert.equal((await press(kilnPath, 'POST', jobInput, reader)).status, 403);
+    assert.equal((await call('/roles/' + role.body.id, 'PUT', {
+      name: 'ส่งผลคัด', permissions: ['pressing.read', 'pressing.sort'],
+    }, admin)).status, 200);
+    assert.equal((await press(kilnPath, 'POST', { ...jobInput, fired_on: '2023-02-29' }, reader)).status, 400);
+    const job = await press(kilnPath, 'POST', jobInput, reader);
+    assert.equal(job.status, 201);
+    const listed = (await press(kilnPath, 'GET', undefined, reader)).body.items.find((item: any) => item.id === job.body.id);
+    assert.equal(listed.reference, 'KILN-' + job.body.id);
+    assert.deepEqual([listed.good_pieces, listed.waste_pieces, listed.results], [0, 0, []]);
+    assert.equal((await press(kilnPath + '/2147483647/results', 'GET', undefined, reader)).status, 404);
+
+    const path = kilnPath + '/' + job.body.id + '/results';
+    const result = { request_id: randomUUID(), type_id: typeId, sorted_on: '2024-02-29', good_pieces: 0, waste_pieces: 0 };
+    for (const invalid of [
+      { sorted_on: '2024-02-28' }, { sorted_on: '2024-02-30' }, { good_pieces: -1 },
+      { waste_pieces: 0.5 }, { good_pieces: '0' }, { waste_pieces: 2147483648 }, { issue_ids: '1' },
+      { employee_id: 2147483647 }, { type_id: 2147483647 }, { correction_reason: 'ยังไม่เคยส่ง' },
+    ]) {
+      assert.equal((await press(path, 'POST', { ...result, ...invalid }, reader)).status, 400);
+    }
+    assert.equal((await press(path, 'POST', { ...result, issue_ids: [2147483647] }, reader)).status, 409);
+    assert.equal((await press(path, 'POST', result, reader)).status, 201);
+    const revision = { ...result, request_id: randomUUID(), good_pieces: 1, correction_reason: 'ตกหล่นหนึ่งแผ่น' };
+    assert.equal((await press(path, 'POST', revision, reader)).status, 403);
+    const corrected = await press(path, 'POST', revision);
+    assert.equal(corrected.status, 201);
+    assert.equal((await press(path, 'POST', revision, reader)).status, 403);
+    const history = (await press(path, 'GET', undefined, reader)).body.items;
+    assert.equal(history.length, 2);
+    assert.equal(history[0].submitted_by_username, 'reader');
+    assert.equal(history[1].is_current, true);
   });
 });

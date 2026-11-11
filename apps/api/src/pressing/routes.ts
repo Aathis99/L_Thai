@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { fail } from '../auth.js';
 import { audit, type Db } from '../database.js';
 import { createOrder, listOrders, listTypes, listWorkers, removeType, saveType, updateOrderTarget } from './catalog.js';
+import { createKilnJob, listKilnJobs, listSortResults, recordSortResult } from './kiln.js';
 import {
   adjustEntry, confirmOpeningReady, editEntry, listEntries, listEntryAdjustments, listIssueReversals,
   listIssues, listStock, recordEntry, recordIssue, recordOpening, releaseSurplus, reverseIssue,
@@ -10,7 +11,8 @@ import {
 export interface PressingAccess {
   db: Db;
   require(permission: string): void;
-  mutate<T>(permission: string, run: (db: Db, actor: { id: number; username: string }) => Promise<T>): Promise<T>;
+  mutate<T>(permission: string,
+    run: (db: Db, actor: { id: number; username: string; permissions: string[] }) => Promise<T>): Promise<T>;
 }
 
 function routeId(value: unknown): number {
@@ -93,6 +95,29 @@ export async function handlePressingRoute(req: Request, res: Response, access: P
     const id = await access.mutate('pressing.issue',
       (db, actor) => confirmOpeningReady(db, routeId(readyMatch[1]), body, actor));
     res.json({ id });
+    return true;
+  }
+
+  if (method === 'GET' && req.path === '/pressing/kiln-jobs') {
+    access.require('pressing.read');
+    res.json({ items: await listKilnJobs(access.db) });
+    return true;
+  }
+  if (method === 'POST' && req.path === '/pressing/kiln-jobs') {
+    const id = await access.mutate('pressing.sort', (db, actor) => createKilnJob(db, body, actor));
+    res.status(201).json({ id });
+    return true;
+  }
+  const resultsMatch = req.path.match(/^\/pressing\/kiln-jobs\/([^/]+)\/results$/);
+  if (method === 'GET' && resultsMatch) {
+    access.require('pressing.read');
+    res.json({ items: await listSortResults(access.db, routeId(resultsMatch[1])) });
+    return true;
+  }
+  if (method === 'POST' && resultsMatch) {
+    const id = await access.mutate('pressing.sort',
+      (db, actor) => recordSortResult(db, routeId(resultsMatch[1]), body, actor));
+    res.status(201).json({ id });
     return true;
   }
 

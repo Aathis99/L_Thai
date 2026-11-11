@@ -152,5 +152,38 @@ export async function migratePressing(db: Db): Promise<void> {
       LEFT JOIN LATERAL (
         SELECT sum(pieces) AS pieces FROM pressing_issue_reversal_lines WHERE issue_line_id=l.id
       ) reversed ON true;
+
+    CREATE TABLE IF NOT EXISTS pressing_kiln_jobs (
+      id SERIAL PRIMARY KEY,
+      request_id TEXT NOT NULL UNIQUE,
+      reference TEXT CHECK (btrim(reference) <> ''),
+      fired_on DATE NOT NULL,
+      created_by INTEGER NOT NULL REFERENCES users(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
+    );
+    CREATE TABLE IF NOT EXISTS pressing_sort_results (
+      id SERIAL PRIMARY KEY,
+      request_id TEXT NOT NULL UNIQUE,
+      request_payload JSONB NOT NULL,
+      kiln_job_id INTEGER NOT NULL REFERENCES pressing_kiln_jobs(id),
+      type_id INTEGER NOT NULL REFERENCES pressing_types(id),
+      revision INTEGER NOT NULL CHECK (revision >= 1),
+      sorted_on DATE NOT NULL,
+      good_pieces INTEGER NOT NULL CHECK (good_pieces >= 0),
+      waste_pieces INTEGER NOT NULL CHECK (waste_pieces >= 0),
+      employee_id INTEGER REFERENCES employees(id),
+      correction_reason TEXT,
+      submitted_by INTEGER NOT NULL REFERENCES users(id),
+      submitted_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+      UNIQUE (kiln_job_id,type_id,revision),
+      CHECK ((revision=1 AND correction_reason IS NULL) OR
+        (revision>1 AND correction_reason IS NOT NULL AND btrim(correction_reason) <> ''))
+    );
+    CREATE INDEX IF NOT EXISTS pressing_sort_results_type_id_idx ON pressing_sort_results(type_id);
+    CREATE TABLE IF NOT EXISTS pressing_sort_result_issues (
+      result_id INTEGER NOT NULL REFERENCES pressing_sort_results(id),
+      issue_id INTEGER NOT NULL REFERENCES pressing_issues(id),
+      PRIMARY KEY (result_id,issue_id)
+    );
   `);
 }
