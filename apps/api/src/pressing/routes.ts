@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { fail } from '../auth.js';
 import { audit, type Db } from '../database.js';
 import { createOrder, listOrders, listTypes, listWorkers, removeType, saveType, updateOrderTarget } from './catalog.js';
+import { listEntries, listStock, recordEntry, recordOpening } from './stock.js';
 
 export interface PressingAccess {
   db: Db;
@@ -9,17 +10,39 @@ export interface PressingAccess {
   mutate<T>(permission: string, run: (db: Db, actor: { id: number; username: string }) => Promise<T>): Promise<T>;
 }
 
-function routeId(value: string): number {
-  const id = Number(value);
-  if (!/^[1-9]\d*$/.test(value) || id > 2147483647) fail('รหัสรายการไม่ถูกต้อง');
-  return id;
+function routeId(value: unknown): number {
+  if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value) || Number(value) > 2147483647)
+    fail('รหัสรายการไม่ถูกต้อง');
+  return Number(value);
 }
 
 export async function handlePressingRoute(req: Request, res: Response, access: PressingAccess): Promise<boolean> {
+  const { method, body = {} } = req;
+  if (method === 'GET' && req.path === '/pressing/entries') {
+    access.require('pressing.read');
+    const orderId = req.query.order_id === undefined ? undefined : routeId(req.query.order_id);
+    res.json({ items: await listEntries(access.db, orderId) });
+    return true;
+  }
+  if (method === 'GET' && req.path === '/pressing/stock') {
+    access.require('pressing.read');
+    res.json({ items: await listStock(access.db) });
+    return true;
+  }
+  if (method === 'POST' && req.path === '/pressing/entries') {
+    const id = await access.mutate('pressing.record', (db, actor) => recordEntry(db, body, actor));
+    res.status(201).json({ id });
+    return true;
+  }
+  if (method === 'POST' && req.path === '/pressing/opening') {
+    const id = await access.mutate('pressing.manage', (db, actor) => recordOpening(db, body, actor));
+    res.status(201).json({ id });
+    return true;
+  }
+
   const match = req.path.match(/^\/pressing\/(types|orders|workers)(?:\/([^/]+))?$/);
   if (!match) return false;
   const [, resource, rawId] = match;
-  const { method, body = {} } = req;
 
   if (method === 'GET' && rawId === undefined) {
     access.require('pressing.read');

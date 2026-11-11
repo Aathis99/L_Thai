@@ -9,14 +9,18 @@ function positiveNumber(value: unknown, label: string): number {
   return value;
 }
 
-function integer(value: unknown, label: string, minimum = 1): number {
+export function integer(value: unknown, label: string, minimum = 1): number {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < minimum || value > 2147483647)
     fail(`กรุณาระบุ${label}เป็นจำนวนเต็มที่ถูกต้อง`);
   return value;
 }
 
-function optionalText(value: unknown, label: string): string | null {
-  return text(value ?? undefined, label, false) || null;
+export function pressingText(value: unknown, label: string, required: true): string;
+export function pressingText(value: unknown, label: string, required: false): string | null;
+export function pressingText(value: unknown, label: string, required: boolean): string | null {
+  const normalized = text(value ?? undefined, label, required);
+  if (normalized.includes('\u0000')) fail(`กรุณาระบุ${label}ให้ถูกต้อง`);
+  return normalized || null;
 }
 
 export function listTypes(db: Db) {
@@ -33,8 +37,8 @@ export async function saveType(db: Db, body: Body, id?: number): Promise<number>
     positiveNumber(body.width, 'ความกว้าง'),
     positiveNumber(body.length, 'ความยาว'),
     body.clay,
-    optionalText(body.name, 'ชื่อเรียก'),
-    optionalText(body.clay_color, 'รายละเอียดดินสี'),
+    pressingText(body.name, 'ชื่อเรียก', false),
+    pressingText(body.clay_color, 'รายละเอียดดินสี', false),
     integer(body.pieces_per_rack, 'จำนวนแผ่นต่อไม้'),
     integer(body.rest_days, 'จำนวนวันพัก', 0),
     body.destination,
@@ -50,15 +54,23 @@ export async function saveType(db: Db, body: Body, id?: number): Promise<number>
 }
 
 export async function removeType(db: Db, id: number): Promise<boolean> {
-  const referenced = await one(db, 'SELECT 1 FROM pressing_orders WHERE type_id=$1 LIMIT 1', [id]);
+  const { referenced } = await one(db, `SELECT EXISTS (SELECT 1 FROM pressing_orders WHERE type_id=$1)
+    OR EXISTS (SELECT 1 FROM pressing_stock_sources WHERE type_id=$1) AS referenced`, [id]);
   const query = referenced ? 'UPDATE pressing_types SET active=false WHERE id=$1 RETURNING id'
     : 'DELETE FROM pressing_types WHERE id=$1 RETURNING id';
   if (!(await one(db, query, [id]))) fail('ไม่พบประเภทกระเบื้อง', 404);
-  return Boolean(referenced);
+  return referenced;
 }
 
 export function listOrders(db: Db) {
-  return all(db, 'SELECT id,type_id,target_pieces,purpose,customer_reference FROM pressing_orders ORDER BY id');
+  return all(db, `WITH totals AS (
+    SELECT order_id, sum(pieces)::double precision AS pieces FROM pressing_entries GROUP BY order_id
+  )
+  SELECT o.id,o.type_id,o.target_pieces,o.purpose,o.customer_reference,
+    coalesce(t.pieces,0) AS pressed_pieces,
+    greatest(o.target_pieces-coalesce(t.pieces,0),0) AS short_pieces,
+    greatest(coalesce(t.pieces,0)-o.target_pieces,0) AS over_pieces
+  FROM pressing_orders o LEFT JOIN totals t ON t.order_id=o.id ORDER BY o.id`);
 }
 
 export async function createOrder(db: Db, body: Body): Promise<number> {
@@ -67,8 +79,8 @@ export async function createOrder(db: Db, body: Body): Promise<number> {
   const purpose = body.purpose;
   if (purpose !== 'customer' && purpose !== 'stock') fail('กรุณาเลือกที่มาของใบสั่งผลิต');
   const reference = purpose === 'customer'
-    ? text(body.customer_reference, 'เลขอ้างอิงออเดอร์')
-    : optionalText(body.customer_reference, 'เลขอ้างอิงออเดอร์');
+    ? pressingText(body.customer_reference, 'เลขอ้างอิงออเดอร์', true)
+    : pressingText(body.customer_reference, 'เลขอ้างอิงออเดอร์', false);
   const type = await one(db, 'SELECT active FROM pressing_types WHERE id=$1', [typeId]);
   if (!type) fail('ไม่พบประเภทกระเบื้องที่เลือก');
   if (!type.active) fail('ประเภทกระเบื้องที่เลือกหยุดใช้แล้ว', 409);
