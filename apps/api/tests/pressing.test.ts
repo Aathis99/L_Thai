@@ -207,7 +207,7 @@ test('pressing catalog, orders and worker selection use session permissions', as
     assert.equal(looseEntry.pieces, 1600);
     assert.deepEqual(fullRackEntry, {
       id: recorded.body.id, order_id: orderId, pressed_on: '2099-01-29', full_racks: 23,
-      loose_pieces: 0, note: null, pieces: 17250, pieces_per_rack: 750, rest_days: 4,
+      loose_pieces: 0, note: null, pieces: 17250, original_pieces: 17250, pieces_per_rack: 750, rest_days: 4,
       ready_on: '2099-02-02', square_meters: 345, employee_id: worker.body.id,
       employee_name: 'คนปั๊ม', recorded_by: 1, recorded_by_username: 'admin',
       recorded_at: fullRackEntry.recorded_at,
@@ -555,5 +555,183 @@ test('pressing catalog, orders and worker selection use session permissions', as
     }, admin)).status, 200);
     assert.equal((await press('/issues', 'POST', issue, reader)).status, 201);
     assert.equal((await press('/releases', 'POST', release, reader)).status, 403);
+  });
+
+  await t.test('an untouched receipt edit keeps the first POST replay and uses the saved conversion and rest period', async () => {
+    const { orderId, typeId } = await makeOrder('stock', 1500);
+    const receipt = { ...entryInput(orderId, 2), pressed_on: '2024-02-29', note: '  เดิม  ' };
+    const created = await press('/entries', 'POST', receipt);
+    assert.equal(created.status, 201);
+    const path = '/entries/' + created.body.id;
+    const newWorker = await call('/employees', 'POST', { code: 'EMP-5', name: 'คนปั๊มอีกคน' }, admin);
+    assert.equal(newWorker.status, 201);
+    assert.equal((await press('/types/' + typeId, 'PUT', {
+      ...tile, pieces_per_rack: 1000, rest_days: 0, pieces_per_sqm: 100,
+    })).status, 200);
+    const edit = { pressed_on: '2024-03-01', employee_id: newWorker.body.id, full_racks: 1, loose_pieces: 25, note: ' แก้แล้ว ' };
+    assert.equal((await press(path, 'PUT', edit, reader)).status, 403);
+    assert.equal((await press(path, 'PUT', { ...edit, order_id: orderId + 1 })).status, 409);
+    assert.equal((await press(path, 'PUT', { ...edit, employee_id: archived.body.id })).status, 400);
+    assert.deepEqual((await press(path, 'PUT', edit)).body, created.body);
+    assert.equal((await press(path, 'PUT', { ...edit, note: 'แก้ครั้งที่สอง' })).status, 200);
+    assert.equal((await press(path, 'PUT', { ...edit, note: 'แก้ครั้งที่สอง' })).status, 200);
+
+    const entry = (await press('/entries?order_id=' + orderId)).body.items[0];
+    assert.equal(entry.pieces, 775);
+    assert.equal(entry.square_meters, 15.5);
+    assert.equal(entry.employee_id, newWorker.body.id);
+    assert.equal(entry.ready_on, '2024-03-05');
+    assert.equal(entry.note, 'แก้ครั้งที่สอง');
+    assert.equal((await findSource(created.body.id)).general_pieces, 775);
+    const history = await press(path + '/adjustments', 'GET', undefined, reader);
+    assert.equal(history.status, 200);
+    assert.equal(history.body.items.length, 2);
+    const [first, second] = history.body.items;
+    assert.equal(first.kind, 'edit');
+    assert.equal(first.previous_pieces, 1500);
+    assert.equal(first.corrected_pieces, 775);
+    assert.deepEqual(first.previous_values, {
+      pressed_on: '2024-02-29', employee_id: worker.body.id, full_racks: 2, loose_pieces: 0,
+      note: 'เดิม', ready_on: '2024-03-04',
+    });
+    assert.equal(first.corrected_values.ready_on, '2024-03-05');
+    assert.equal(first.corrected_by_username, 'admin');
+    assert.ok(Number.isFinite(Date.parse(first.corrected_at)));
+    assert.equal(second.previous_values.note, 'แก้แล้ว');
+    assert.equal(second.corrected_values.note, 'แก้ครั้งที่สอง');
+    const replay = await press('/entries', 'POST', { ...receipt, note: 'เดิม', loose_pieces: 0 });
+    assert.equal(replay.status, 201);
+    assert.deepEqual(replay.body, created.body);
+    assert.equal((await press('/entries', 'POST', { ...receipt, ...edit })).status, 409);
+    assert.equal((await press(path + '/adjustments', 'GET', undefined, '')).status, 401);
+  });
+
+  await t.test('a receipt correction counts releases once and supplies the effective totals and release cap', async () => {
+    const { orderId, typeId } = await makeOrder('customer', 800);
+    const source = await receive(orderId);
+    const path = '/entries/' + source.entry_id + '/adjustments';
+    const adjustment = { request_id: randomUUID(), corrected_pieces: 1100, reason: 'นับแผ่นซ้ำ' };
+    assert.equal((await press(path, 'POST', adjustment)).status, 409);
+    const release = { request_id: randomUUID(), source_id: source.id, pieces: 500 };
+    assert.equal((await press('/releases', 'POST', release)).status, 201);
+    const issue = { ...issueInput(typeId, [issueLine(source.id, 400), issueLine(source.id, 600, 'order')]), order_id: orderId };
+    assert.equal((await press('/issues', 'POST', issue)).status, 201);
+    assert.equal((await press('/entries/' + source.entry_id, 'PUT', entryInput(orderId, 1))).status, 409);
+    assert.equal((await press(path, 'POST', adjustment, reader)).status, 403);
+    assert.equal((await press(path, 'POST', { ...adjustment, reason: ' ' })).status, 400);
+    assert.equal((await press(path, 'POST', { ...adjustment, corrected_pieces: 1099 })).status, 409);
+    const corrected = await press(path, 'POST', adjustment);
+    assert.equal(corrected.status, 201);
+    const balance = await findSource(source.entry_id);
+    assert.equal(balance.remaining_pieces, 100);
+    assert.equal(balance.general_pieces, 100);
+    assert.equal(balance.restricted_pieces, 0);
+    const entry = (await press('/entries?order_id=' + orderId)).body.items[0];
+    assert.equal(entry.pieces, 1100);
+    assert.equal(entry.original_pieces, 1500);
+    assert.equal(entry.full_racks, 2);
+    assert.equal(entry.square_meters, 22);
+    const order = (await press('/orders')).body.items.find((row: { id: number }) => row.id === orderId);
+    assert.deepEqual([order.pressed_pieces, order.short_pieces, order.over_pieces], [1100, 0, 300]);
+
+    const next = await press(path, 'POST', { ...adjustment, request_id: randomUUID(), corrected_pieces: 1200 });
+    assert.equal(next.status, 201);
+    assert.equal((await findSource(source.entry_id)).remaining_pieces, 200);
+    assert.deepEqual((await press(path, 'POST', { ...adjustment, reason: ' นับแผ่นซ้ำ ' })).body, corrected.body);
+    assert.equal((await press(path, 'POST', { ...adjustment, corrected_pieces: 1200 })).status, 409);
+    assert.equal((await press('/releases', 'POST', { ...release, request_id: randomUUID(), pieces: 1 })).status, 409);
+    assert.equal((await press('/orders/' + orderId, 'PUT', { target_pieces: 600 })).status, 200);
+    assert.equal((await findSource(source.entry_id)).general_pieces, 100);
+    assert.equal((await press('/releases', 'POST', { ...release, request_id: randomUUID(), pieces: 100 })).status, 201);
+    assert.equal((await press(path, 'POST', adjustment)).status, 201);
+    assert.equal((await findSource(source.entry_id)).general_pieces, 200);
+    const history = await press(path);
+    assert.equal(history.status, 200);
+    assert.deepEqual(history.body.items.map((item: any) =>
+      [item.id, item.kind, item.previous_pieces, item.corrected_pieces, item.reason, item.corrected_by_username]), [
+      [corrected.body.id, 'adjustment', 1500, 1100, 'นับแผ่นซ้ำ', 'admin'],
+      [next.body.id, 'adjustment', 1100, 1200, 'นับแผ่นซ้ำ', 'admin'],
+    ]);
+    assert.equal((await one(pool, 'SELECT pieces FROM pressing_entries WHERE id=$1', [source.entry_id])).pieces, 1500);
+    await migrate(pool);
+    assert.deepEqual((await press(path)).body, history.body);
+  });
+
+  await t.test('issue reversals restore only their original allocations and cap the unreversed amount atomically', async () => {
+    const { orderId, typeId } = await makeOrder('customer', 1000);
+    const source = await receive(orderId);
+    assert.equal((await press('/releases', 'POST', { request_id: randomUUID(), source_id: source.id, pieces: 500 })).status, 201);
+    const issue = { ...issueInput(typeId, [issueLine(source.id, 400), issueLine(source.id, 600, 'order')]), order_id: orderId };
+    const created = await press('/issues', 'POST', issue);
+    assert.equal(created.status, 201);
+    const original = (await press('/issues')).body;
+    const { lines } = original.items.find((item: { id: number }) => item.id === created.body.id);
+    const general = lines.find((line: { allocation: string }) => line.allocation === 'general');
+    const restricted = lines.find((line: { allocation: string }) => line.allocation === 'order');
+    const reverseLine = (issue_line_id: number, pieces: number) => ({ issue_line_id, pieces });
+    const reversal = {
+      request_id: randomUUID(), reason: 'ลงเบิกเกิน',
+      lines: [reverseLine(general.id, 400), reverseLine(restricted.id, 300)],
+    };
+    const path = '/issues/' + created.body.id + '/reversals';
+    assert.equal((await press(path, 'POST', reversal, reader)).status, 403);
+    assert.equal((await press(path, 'POST', { ...reversal, lines: [] })).status, 400);
+    assert.equal((await press(path, 'POST', { ...reversal, lines: [...reversal.lines, reverseLine(2147483647, 1)] })).status, 409);
+    assert.equal((await press(path, 'POST', { ...reversal, lines: [...reversal.lines, reverseLine(general.id, 1)] })).status, 409);
+    assert.equal((await findSource(source.entry_id)).remaining_pieces, 500);
+    assert.deepEqual((await press(path)).body, { items: [] });
+    const reversed = await press(path, 'POST', reversal);
+    assert.equal(reversed.status, 201);
+    const replay = await press(path, 'POST', { ...reversal, lines: [...reversal.lines].reverse() });
+    assert.equal(replay.status, 201);
+    assert.deepEqual(replay.body, reversed.body);
+    assert.equal((await press(path, 'POST', { ...reversal, reason: 'เหตุผลอื่น' })).status, 409);
+    const later = { ...reversal, lines: [reverseLine(restricted.id, 300)] };
+    const competing = await Promise.all([1, 2].map(() => press(path, 'POST', { ...later, request_id: randomUUID() })));
+    assert.deepEqual(competing.map(result => result.status).sort(), [201, 409]);
+    const balance = await findSource(source.entry_id);
+    assert.equal(balance.general_pieces, 500);
+    assert.equal(balance.restricted_pieces, 1000);
+    assert.equal(balance.remaining_pieces, 1500);
+    assert.deepEqual((await press('/issues')).body, original);
+    const history = await press(path);
+    assert.equal(history.status, 200);
+    assert.equal(history.body.items.length, 2);
+    assert.equal(history.body.items[0].reason, 'ลงเบิกเกิน');
+    assert.equal(history.body.items[0].reversed_by_username, 'admin');
+    assert.ok(Number.isFinite(Date.parse(history.body.items[0].reversed_at)));
+    assert.deepEqual(history.body.items[0].lines, [
+      { issue_line_id: general.id, source_id: source.id, allocation: 'general', pieces: 400, previous_pieces: 400 },
+      { issue_line_id: restricted.id, source_id: source.id, allocation: 'order', pieces: 300, previous_pieces: 600 },
+    ]);
+    assert.equal(history.body.items[1].lines[0].previous_pieces, 300);
+    assert.equal((await press('/entries/' + source.entry_id, 'PUT', entryInput(orderId, 1))).status, 409);
+    const corrected = await press('/entries/' + source.entry_id + '/adjustments', 'POST', {
+      request_id: randomUUID(), corrected_pieces: 500, reason: 'แก้ยอดปั๊ม',
+    });
+    assert.equal(corrected.status, 201);
+    assert.equal((await findSource(source.entry_id)).restricted_pieces, 0);
+  });
+
+  await t.test('a general receipt correction uses net issues and can reach zero after a full reversal', async () => {
+    const { orderId, typeId } = await makeOrder('stock', 1500);
+    const source = await receive(orderId);
+    const issued = await press('/issues', 'POST', issueInput(typeId, [issueLine(source.id, 250)]));
+    assert.equal(issued.status, 201);
+    const path = '/entries/' + source.entry_id + '/adjustments';
+    const correction = { request_id: randomUUID(), corrected_pieces: 249, reason: 'แก้ยอดปั๊ม' };
+    assert.equal((await press(path, 'POST', correction)).status, 409);
+    assert.equal((await press(path, 'POST', { ...correction, corrected_pieces: 250 })).status, 201);
+    const issue = (await press('/issues')).body.items.find((item: { id: number }) => item.id === issued.body.id);
+    assert.equal((await press('/issues/' + issued.body.id + '/reversals', 'POST', {
+      request_id: randomUUID(), lines: [{ issue_line_id: issue.lines[0].id, pieces: 250 }], reason: 'ลงเบิกผิด',
+    })).status, 201);
+    assert.equal((await press(path, 'POST', { ...correction, request_id: randomUUID(), corrected_pieces: 0 })).status, 201);
+    assert.equal((await findSource(source.entry_id)).remaining_pieces, 0);
+    const audit = (await call('/audit', 'GET', undefined, admin)).body.items;
+    assert.equal(audit.filter((row: { target: string; action: string }) =>
+      row.target === String(source.entry_id) && row.action === 'ปรับยอดปั๊ม').length, 2);
+    assert.equal(audit.filter((row: { target: string; action: string }) =>
+      row.target === String(issued.body.id) && row.action === 'ย้อนรายการเบิกงานปั๊ม').length, 1);
   });
 });

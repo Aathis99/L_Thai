@@ -3,7 +3,8 @@ import { fail } from '../auth.js';
 import { audit, type Db } from '../database.js';
 import { createOrder, listOrders, listTypes, listWorkers, removeType, saveType, updateOrderTarget } from './catalog.js';
 import {
-  confirmOpeningReady, listEntries, listIssues, listStock, recordEntry, recordIssue, recordOpening, releaseSurplus,
+  adjustEntry, confirmOpeningReady, editEntry, listEntries, listEntryAdjustments, listIssueReversals,
+  listIssues, listStock, recordEntry, recordIssue, recordOpening, releaseSurplus, reverseIssue,
 } from './stock.js';
 
 export interface PressingAccess {
@@ -36,6 +37,24 @@ export async function handlePressingRoute(req: Request, res: Response, access: P
     res.status(201).json({ id });
     return true;
   }
+  const entryMatch = req.path.match(/^\/pressing\/entries\/([^/]+)$/);
+  if (method === 'PUT' && entryMatch) {
+    const id = await access.mutate('pressing.correct', (db, actor) => editEntry(db, routeId(entryMatch[1]), body, actor));
+    res.json({ id });
+    return true;
+  }
+  const adjustmentMatch = req.path.match(/^\/pressing\/entries\/([^/]+)\/adjustments$/);
+  if (method === 'GET' && adjustmentMatch) {
+    access.require('pressing.read');
+    res.json({ items: await listEntryAdjustments(access.db, routeId(adjustmentMatch[1])) });
+    return true;
+  }
+  if (method === 'POST' && adjustmentMatch) {
+    const id = await access.mutate('pressing.correct',
+      (db, actor) => adjustEntry(db, routeId(adjustmentMatch[1]), body, actor));
+    res.status(201).json({ id });
+    return true;
+  }
   if (method === 'POST' && req.path === '/pressing/opening') {
     const id = await access.mutate('pressing.manage', (db, actor) => recordOpening(db, body, actor));
     res.status(201).json({ id });
@@ -49,6 +68,18 @@ export async function handlePressingRoute(req: Request, res: Response, access: P
   }
   if (method === 'POST' && req.path === '/pressing/issues') {
     const id = await access.mutate('pressing.issue', (db, actor) => recordIssue(db, body, actor));
+    res.status(201).json({ id });
+    return true;
+  }
+  const reversalMatch = req.path.match(/^\/pressing\/issues\/([^/]+)\/reversals$/);
+  if (method === 'GET' && reversalMatch) {
+    access.require('pressing.read');
+    res.json({ items: await listIssueReversals(access.db, routeId(reversalMatch[1])) });
+    return true;
+  }
+  if (method === 'POST' && reversalMatch) {
+    const id = await access.mutate('pressing.correct',
+      (db, actor) => reverseIssue(db, routeId(reversalMatch[1]), body, actor));
     res.status(201).json({ id });
     return true;
   }

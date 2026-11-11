@@ -22,28 +22,53 @@ function restEnd(pressedOn: string, restDays: number): string {
 
 export function listEntries(db: Db, orderId?: number) {
   return all(db, `SELECT e.id,e.order_id,to_char(e.pressed_on,'YYYY-MM-DD') AS pressed_on,
-    e.full_racks,e.loose_pieces,e.note,e.pieces,e.pieces_per_rack,e.rest_days,
-    to_char(s.ready_on,'YYYY-MM-DD') AS ready_on,e.square_meters,
+    e.full_racks,e.loose_pieces,e.note,e.effective_pieces AS pieces,e.original_pieces,e.pieces_per_rack,e.rest_days,
+    to_char(s.ready_on,'YYYY-MM-DD') AS ready_on,
+    CASE WHEN e.effective_pieces=e.pieces THEN e.square_meters
+      ELSE e.effective_pieces/e.pieces_per_sqm END AS square_meters,
     e.employee_id,w.name AS employee_name,e.recorded_by,u.username AS recorded_by_username,e.recorded_at
-    FROM pressing_entries e JOIN pressing_stock_sources s ON s.entry_id=e.id
+    FROM pressing_effective_entries e JOIN pressing_stock_sources s ON s.entry_id=e.id
     JOIN employees w ON w.id=e.employee_id JOIN users u ON u.id=e.recorded_by
     ${orderId === undefined ? '' : 'WHERE e.order_id=$1'} ORDER BY e.id`,
   orderId === undefined ? [] : [orderId]);
 }
 
+function parseEntryValues(body: Body) {
+  return {
+    pressed_on: calendarDate(body.pressed_on, 'วันที่ปั๊ม'),
+    employee_id: integer(body.employee_id, 'ผู้ปั๊ม'),
+    full_racks: integer(body.full_racks, 'จำนวนไม้เต็ม', 0),
+    loose_pieces: integer(body.loose_pieces ?? 0, 'จำนวนแผ่นเศษ', 0),
+    note: pressingText(body.note, 'หมายเหตุ', false),
+  };
+}
+
+async function requireActiveWorker(db: Db, employeeId: number) {
+  if (!(await one(db, 'SELECT 1 FROM employees WHERE id=$1 AND active=1 AND archived=0', [employeeId])))
+    fail('กรุณาเลือกผู้ปั๊มที่ยังทำงานอยู่');
+}
+
+function entrySquareMeters(pieces: number, piecesPerSqm: number | null): number | null {
+  if (piecesPerSqm === null) return null;
+  const squareMeters = pieces / piecesPerSqm;
+  if (!Number.isFinite(squareMeters)) fail('จำนวน ตร.ม. อยู่นอกช่วงที่รองรับ');
+  return squareMeters;
+}
+
 export async function recordEntry(db: Db, body: Body, actor: Recorder): Promise<number> {
   const requestId = pressingText(body.request_id, 'รหัสคำขอ', true);
   const orderId = integer(body.order_id, 'ใบสั่งผลิต');
-  const pressedOn = calendarDate(body.pressed_on, 'วันที่ปั๊ม');
-  const employeeId = integer(body.employee_id, 'ผู้ปั๊ม');
-  const racks = integer(body.full_racks, 'จำนวนไม้เต็ม', 0);
-  const loose = integer(body.loose_pieces ?? 0, 'จำนวนแผ่นเศษ', 0);
-  const note = pressingText(body.note, 'หมายเหตุ', false);
-  const existing = await one(db, `SELECT id,order_id,to_char(pressed_on,'YYYY-MM-DD') AS pressed_on,
-    employee_id,full_racks,loose_pieces,note FROM pressing_entries WHERE request_id=$1`, [requestId]);
+  const { pressed_on: pressedOn, employee_id: employeeId, full_racks: racks,
+    loose_pieces: loose, note } = parseEntryValues(body);
+  const existing = await one(db, `SELECT e.id,e.order_id,to_char(e.pressed_on,'YYYY-MM-DD') AS pressed_on,
+    e.employee_id,e.full_racks,e.loose_pieces,e.note,(
+      SELECT previous_values FROM pressing_entry_adjustments WHERE entry_id=e.id AND request_id IS NULL
+      ORDER BY id LIMIT 1
+    ) AS original_values FROM pressing_entries e WHERE e.request_id=$1`, [requestId]);
   if (existing) {
-    if (existing.order_id !== orderId || existing.pressed_on !== pressedOn || existing.employee_id !== employeeId
-      || existing.full_racks !== racks || existing.loose_pieces !== loose || existing.note !== note)
+    const original = existing.original_values ?? existing;
+    if (existing.order_id !== orderId || original.pressed_on !== pressedOn || original.employee_id !== employeeId
+      || original.full_racks !== racks || original.loose_pieces !== loose || original.note !== note)
       fail('รหัสคำขอนี้มีข้อมูลยอดปั๊มอื่นแล้ว', 409);
     return existing.id;
   }
@@ -52,12 +77,10 @@ export async function recordEntry(db: Db, body: Body, actor: Recorder): Promise<
     FROM pressing_orders o JOIN pressing_types t ON t.id=o.type_id WHERE o.id=$1`, [orderId]);
   if (!type) fail('ไม่พบใบสั่งผลิตที่เลือก');
   if (!type.active) fail('ประเภทกระเบื้องที่เลือกหยุดใช้แล้ว', 409);
-  if (!(await one(db, 'SELECT 1 FROM employees WHERE id=$1 AND active=1 AND archived=0', [employeeId])))
-    fail('กรุณาเลือกผู้ปั๊มที่ยังทำงานอยู่');
+  await requireActiveWorker(db, employeeId);
   const pieces = integer(racks * type.pieces_per_rack + loose, 'ยอดปั๊ม');
   const readyOn = restEnd(pressedOn, type.rest_days);
-  const squareMeters = type.pieces_per_sqm === null ? null : pieces / type.pieces_per_sqm;
-  if (squareMeters !== null && !Number.isFinite(squareMeters)) fail('จำนวน ตร.ม. อยู่นอกช่วงที่รองรับ');
+  const squareMeters = entrySquareMeters(pieces, type.pieces_per_sqm);
 
   const { id } = await one(db, `INSERT INTO pressing_entries(request_id,order_id,pressed_on,employee_id,
     full_racks,loose_pieces,note,pieces,pieces_per_rack,rest_days,pieces_per_sqm,square_meters,recorded_by)
@@ -98,28 +121,102 @@ export async function recordOpening(db: Db, body: Body, actor: Recorder): Promis
   return id;
 }
 
-const stockBalances = `SELECT s.id,s.type_id,s.entry_id,e.order_id,to_char(e.pressed_on,'YYYY-MM-DD') AS pressed_on,
-  to_char(s.as_of,'YYYY-MM-DD') AS as_of,to_char(s.ready_on,'YYYY-MM-DD') AS ready_on,
-  coalesce(s.ready_on <= (statement_timestamp() AT TIME ZONE 'Asia/Bangkok')::date,
-    s.ready_confirmed OR s.ready_confirmed_later) AS ready,
-  s.destination,(coalesce(e.pieces,s.opening_pieces)-issued.general-issued.restricted)::integer AS remaining_pieces,
-  ((CASE WHEN o.purpose='customer' THEN released.pieces ELSE coalesce(e.pieces,s.opening_pieces) END)
-    -issued.general)::integer AS general_pieces,
-  ((CASE WHEN o.purpose='customer' THEN e.pieces-released.pieces ELSE 0 END)
-    -issued.restricted)::integer AS restricted_pieces
-  FROM pressing_stock_sources s LEFT JOIN pressing_entries e ON e.id=s.entry_id
+const stockSources = `FROM pressing_stock_sources s LEFT JOIN pressing_effective_entries e ON e.id=s.entry_id
   LEFT JOIN pressing_orders o ON o.id=e.order_id
   CROSS JOIN LATERAL (
     SELECT coalesce(sum(pieces) FILTER (WHERE allocation='general'),0) AS general,
-      coalesce(sum(pieces) FILTER (WHERE allocation='order'),0) AS restricted
-    FROM pressing_issue_lines WHERE source_id=s.id
+      coalesce(sum(pieces) FILTER (WHERE allocation='order'),0) AS restricted,
+      count(*) > 0 AS has_issues
+    FROM pressing_net_issue_lines WHERE source_id=s.id
   ) issued
   CROSS JOIN LATERAL (
     SELECT coalesce(sum(pieces),0) AS pieces FROM pressing_releases WHERE source_id=s.id
   ) released`;
 
+const stockBalances = `SELECT s.id,s.type_id,s.entry_id,e.order_id,to_char(e.pressed_on,'YYYY-MM-DD') AS pressed_on,
+  to_char(s.as_of,'YYYY-MM-DD') AS as_of,to_char(s.ready_on,'YYYY-MM-DD') AS ready_on,
+  coalesce(s.ready_on <= (statement_timestamp() AT TIME ZONE 'Asia/Bangkok')::date,
+    s.ready_confirmed OR s.ready_confirmed_later) AS ready,
+  s.destination,(coalesce(e.effective_pieces,s.opening_pieces)-issued.general-issued.restricted)::integer AS remaining_pieces,
+  ((CASE WHEN o.purpose='customer' THEN released.pieces ELSE coalesce(e.effective_pieces,s.opening_pieces) END)
+    -issued.general)::integer AS general_pieces,
+  ((CASE WHEN o.purpose='customer' THEN e.effective_pieces-released.pieces ELSE 0 END)
+    -issued.restricted)::integer AS restricted_pieces
+  ${stockSources}`;
+
 export function listStock(db: Db) {
   return all(db, stockBalances + ' ORDER BY s.id');
+}
+
+async function entryForCorrection(db: Db, entryId: number) {
+  const entry = await one(db, `SELECT e.order_id,e.pieces_per_rack,e.pieces_per_sqm,e.rest_days,e.effective_pieces,
+    jsonb_build_object('pressed_on',to_char(e.pressed_on,'YYYY-MM-DD'),'employee_id',e.employee_id,
+      'full_racks',e.full_racks,'loose_pieces',e.loose_pieces,'note',e.note,
+      'ready_on',to_char(s.ready_on,'YYYY-MM-DD')) AS values,
+    (issued.has_issues OR released.pieces > 0) AS has_movement,
+    (CASE WHEN o.purpose='customer' THEN issued.restricted + released.pieces
+      ELSE issued.general END)::integer AS minimum_pieces
+    ${stockSources} WHERE s.entry_id=$1`, [entryId]);
+  if (!entry) fail('ไม่พบรายการปั๊มที่เลือก', 404);
+  return entry;
+}
+
+export async function editEntry(db: Db, entryId: number, body: Body, actor: Recorder): Promise<number> {
+  const values = parseEntryValues(body);
+  const entry = await entryForCorrection(db, entryId);
+  if (body.order_id !== undefined && body.order_id !== entry.order_id)
+    fail('เปลี่ยนใบสั่งผลิตของรายการปั๊มไม่ได้', 409);
+  if (entry.has_movement) fail('รายการนี้มีการเบิกหรือปล่อยยอดแล้ว กรุณาลงรายการปรับยอด', 409);
+  const before = entry.values;
+  if (Object.entries(values).every(([key, value]) => before[key] === value)) return entryId;
+  if (before.employee_id !== values.employee_id) await requireActiveWorker(db, values.employee_id);
+  const pieces = integer(values.full_racks * entry.pieces_per_rack + values.loose_pieces, 'ยอดปั๊ม');
+  const readyOn = restEnd(values.pressed_on, entry.rest_days);
+  const squareMeters = entrySquareMeters(pieces, entry.pieces_per_sqm);
+
+  const { corrected_at } = await one(db, `INSERT INTO pressing_entry_adjustments(entry_id,previous_pieces,
+    corrected_pieces,previous_values,corrected_values,corrected_by,corrected_at)
+    VALUES($1,$2,$3,$4,$5,$6,clock_timestamp()) RETURNING corrected_at::text`,
+  [entryId, entry.effective_pieces, pieces, before, { ...values, ready_on: readyOn }, actor.id]);
+  await db.query(`UPDATE pressing_entries SET pressed_on=$2,employee_id=$3,full_racks=$4,
+    loose_pieces=$5,note=$6,pieces=$7,square_meters=$8 WHERE id=$1`,
+  [entryId, values.pressed_on, values.employee_id, values.full_racks, values.loose_pieces, values.note, pieces, squareMeters]);
+  await db.query('UPDATE pressing_stock_sources SET ready_on=$2 WHERE entry_id=$1', [entryId, readyOn]);
+  await auditMovement(db, actor, 'แก้ไขรายการปั๊ม', entryId, corrected_at);
+  return entryId;
+}
+
+export async function adjustEntry(db: Db, entryId: number, body: Body, actor: Recorder): Promise<number> {
+  const requestId = pressingText(body.request_id, 'รหัสคำขอ', true);
+  const pieces = integer(body.corrected_pieces, 'ยอดปั๊มที่แก้ไข', 0);
+  const reason = pressingText(body.reason, 'เหตุผลที่ปรับยอด', true);
+  const existing = await one(db, `SELECT id,entry_id,corrected_pieces,reason FROM pressing_entry_adjustments
+    WHERE request_id=$1`, [requestId]);
+  if (existing) {
+    if (existing.entry_id !== entryId || existing.corrected_pieces !== pieces || existing.reason !== reason)
+      fail('รหัสคำขอนี้มีข้อมูลปรับยอดอื่นแล้ว', 409);
+    return existing.id;
+  }
+
+  const entry = await entryForCorrection(db, entryId);
+  if (!entry.has_movement) fail('รายการนี้ยังไม่มีการเบิกหรือปล่อยยอด กรุณาแก้ไขรายการปั๊ม', 409);
+  if (pieces < entry.minimum_pieces) fail('ยอดปั๊มที่แก้ไขต่ำกว่ายอดที่เบิกหรือปล่อยแล้ว', 409);
+  entrySquareMeters(pieces, entry.pieces_per_sqm);
+  const { id, corrected_at } = await one(db, `INSERT INTO pressing_entry_adjustments(entry_id,request_id,
+    previous_pieces,corrected_pieces,reason,corrected_by,corrected_at)
+    VALUES($1,$2,$3,$4,$5,$6,clock_timestamp()) RETURNING id,corrected_at::text`,
+  [entryId, requestId, entry.effective_pieces, pieces, reason, actor.id]);
+  await auditMovement(db, actor, 'ปรับยอดปั๊ม', entryId, corrected_at);
+  return id;
+}
+
+export async function listEntryAdjustments(db: Db, entryId: number) {
+  if (!(await one(db, 'SELECT 1 FROM pressing_entries WHERE id=$1', [entryId])))
+    fail('ไม่พบรายการปั๊มที่เลือก', 404);
+  return all(db, `SELECT a.id,a.entry_id,CASE WHEN a.request_id IS NULL THEN 'edit' ELSE 'adjustment' END AS kind,
+    a.previous_pieces,a.corrected_pieces,a.previous_values,a.corrected_values,a.reason,
+    a.corrected_by,u.username AS corrected_by_username,a.corrected_at
+    FROM pressing_entry_adjustments a JOIN users u ON u.id=a.corrected_by WHERE a.entry_id=$1 ORDER BY a.id`, [entryId]);
 }
 
 export async function confirmOpeningReady(db: Db, id: number, body: Body, actor: Recorder): Promise<number> {
@@ -220,6 +317,72 @@ export async function recordIssue(db: Db, body: Body, actor: Recorder): Promise<
   return id;
 }
 
+type ReversalLine = { issue_line_id: number; pieces: number };
+
+function parseReversalLines(value: unknown): ReversalLine[] {
+  if (!Array.isArray(value) || !value.length) fail('กรุณาระบุรายการย้อนเบิกอย่างน้อยหนึ่งรายการ');
+  const lines = value.map((line: unknown): ReversalLine => {
+    if (!line || typeof line !== 'object') fail('รายการย้อนเบิกไม่ถูกต้อง');
+    const { issue_line_id, pieces } = line as Body;
+    return {
+      issue_line_id: integer(issue_line_id, 'รายการที่เบิก'),
+      pieces: integer(pieces, 'จำนวนแผ่นที่คืน'),
+    };
+  });
+  return lines.sort((a, b) => a.issue_line_id - b.issue_line_id || a.pieces - b.pieces);
+}
+
+async function requireIssue(db: Db, issueId: number) {
+  if (!(await one(db, 'SELECT 1 FROM pressing_issues WHERE id=$1', [issueId])))
+    fail('ไม่พบรายการเบิกที่เลือก', 404);
+}
+
+export async function reverseIssue(db: Db, issueId: number, body: Body, actor: Recorder): Promise<number> {
+  const requestId = pressingText(body.request_id, 'รหัสคำขอ', true);
+  const reason = pressingText(body.reason, 'เหตุผลที่ย้อนเบิก', true);
+  const lines = parseReversalLines(body.lines);
+  const payload = JSON.stringify(lines);
+  const existing = await one(db, `SELECT id,issue_id,reason,request_lines=$2::jsonb AS same_lines
+    FROM pressing_issue_reversals WHERE request_id=$1`, [requestId, payload]);
+  if (existing) {
+    if (existing.issue_id !== issueId || existing.reason !== reason || !existing.same_lines)
+      fail('รหัสคำขอนี้มีข้อมูลย้อนเบิกอื่นแล้ว', 409);
+    return existing.id;
+  }
+  await requireIssue(db, issueId);
+
+  const combined = new Map<number, number>();
+  for (const { issue_line_id, pieces } of lines)
+    combined.set(issue_line_id, (combined.get(issue_line_id) ?? 0) + pieces);
+  const remaining = await all(db, `SELECT id,pieces FROM pressing_net_issue_lines
+    WHERE issue_id=$1 AND id=ANY($2::integer[])`, [issueId, [...combined.keys()]]);
+  if (remaining.length !== combined.size) fail('มีรายการที่ไม่ได้อยู่ในการเบิกที่เลือก', 409);
+  const returns = remaining.map(({ id, pieces: previous_pieces }) => {
+    const pieces = combined.get(id)!;
+    if (pieces > previous_pieces) fail('จำนวนแผ่นที่คืนมากกว่ายอดเบิกที่ยังไม่ได้ย้อน', 409);
+    return { issue_line_id: id, pieces, previous_pieces };
+  });
+
+  const { id, reversed_at } = await one(db, `INSERT INTO pressing_issue_reversals(issue_id,request_id,request_lines,
+    reason,reversed_by,reversed_at) VALUES($1,$2,$3,$4,$5,clock_timestamp()) RETURNING id,reversed_at::text`,
+  [issueId, requestId, payload, reason, actor.id]);
+  await db.query(`INSERT INTO pressing_issue_reversal_lines(reversal_id,issue_line_id,pieces,previous_pieces)
+    SELECT $1,issue_line_id,pieces,previous_pieces FROM jsonb_to_recordset($2::jsonb)
+      AS line(issue_line_id integer,pieces integer,previous_pieces integer)`, [id, JSON.stringify(returns)]);
+  await auditMovement(db, actor, 'ย้อนรายการเบิกงานปั๊ม', issueId, reversed_at);
+  return id;
+}
+
+export async function listIssueReversals(db: Db, issueId: number) {
+  await requireIssue(db, issueId);
+  return all(db, `SELECT r.id,r.issue_id,r.reason,r.reversed_by,u.username AS reversed_by_username,r.reversed_at,
+    jsonb_agg(jsonb_build_object('issue_line_id',l.id,'source_id',l.source_id,'allocation',l.allocation,
+      'pieces',rl.pieces,'previous_pieces',rl.previous_pieces) ORDER BY l.id) AS lines
+    FROM pressing_issue_reversals r JOIN users u ON u.id=r.reversed_by
+    JOIN pressing_issue_reversal_lines rl ON rl.reversal_id=r.id JOIN pressing_issue_lines l ON l.id=rl.issue_line_id
+    WHERE r.issue_id=$1 GROUP BY r.id,u.username ORDER BY r.id`, [issueId]);
+}
+
 export async function releaseSurplus(db: Db, body: Body, actor: Recorder): Promise<number> {
   const requestId = pressingText(body.request_id, 'รหัสคำขอ', true);
   const sourceId = integer(body.source_id, 'แหล่งสต็อก');
@@ -235,7 +398,7 @@ export async function releaseSurplus(db: Db, body: Body, actor: Recorder): Promi
   if (!source) fail('ไม่พบแหล่งสต็อกที่เลือก', 404);
   if (pieces > source.restricted_pieces) fail('จำนวนแผ่นที่ปล่อยมากกว่ายอดที่ยังผูกกับใบสั่ง', 409);
   const { enough } = await one(db, `SELECT
-    (SELECT sum(pieces) FROM pressing_entries WHERE order_id=o.id) - o.target_pieces -
+    (SELECT sum(effective_pieces) FROM pressing_effective_entries WHERE order_id=o.id) - o.target_pieces -
     (SELECT coalesce(sum(r.pieces),0) FROM pressing_releases r JOIN pressing_stock_sources s ON s.id=r.source_id
       JOIN pressing_entries e ON e.id=s.entry_id WHERE e.order_id=o.id) >= $2::integer AS enough
     FROM pressing_orders o WHERE o.id=$1`, [source.order_id, pieces]);

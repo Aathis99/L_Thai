@@ -64,7 +64,7 @@ export async function removeType(db: Db, id: number): Promise<boolean> {
 
 export function listOrders(db: Db) {
   return all(db, `WITH totals AS (
-    SELECT order_id, sum(pieces)::double precision AS pieces FROM pressing_entries GROUP BY order_id
+    SELECT order_id, sum(effective_pieces)::double precision AS pieces FROM pressing_effective_entries GROUP BY order_id
   )
   SELECT o.id,o.type_id,o.target_pieces,o.purpose,o.customer_reference,
     coalesce(t.pieces,0) AS pressed_pieces,
