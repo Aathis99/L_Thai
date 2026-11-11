@@ -158,6 +158,11 @@ function parseIssueLines(value: unknown): IssueLine[] {
   return lines.sort((a, b) => a.source_id - b.source_id || a.allocation.localeCompare(b.allocation) || a.pieces - b.pieces);
 }
 
+function auditMovement(db: Db, actor: Recorder, action: string, id: number, movedAt: string) {
+  return db.query('INSERT INTO audit(actor,action,target,created_at) VALUES($1,$2,$3,$4)',
+    [actor.username, action, String(id), movedAt]);
+}
+
 export async function recordIssue(db: Db, body: Body, actor: Recorder): Promise<number> {
   const requestId = pressingText(body.request_id, 'รหัสคำขอ', true);
   const typeId = integer(body.type_id, 'ประเภทกระเบื้อง');
@@ -203,14 +208,15 @@ export async function recordIssue(db: Db, body: Body, actor: Recorder): Promise<
     if (line.pieces > available) fail('จำนวนแผ่นที่เบิกมากกว่ายอดที่ใช้ได้', 409);
   }
 
-  const { id } = await one(db, `INSERT INTO pressing_issues(request_id,request_payload,type_id,order_id,
-    destination,confirmed_ready,pooled,issued_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+  const { id, issued_at } = await one(db, `INSERT INTO pressing_issues(request_id,request_payload,type_id,order_id,
+    destination,confirmed_ready,pooled,issued_by,issued_at)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,clock_timestamp()) RETURNING id,issued_at::text`,
   [requestId, payload, typeId, orderId, destination, confirmedReady, pooled, actor.id]);
   await db.query(`INSERT INTO pressing_issue_lines(issue_id,source_id,pieces,allocation)
     SELECT $1,source_id,pieces,allocation FROM jsonb_to_recordset($2::jsonb)
       AS line(source_id integer,pieces integer,allocation text) ORDER BY source_id,allocation`,
   [id, JSON.stringify([...combined.values()])]);
-  await audit(db, actor.username, 'ยืนยันเบิกสต็อกงานปั๊ม', String(id));
+  await auditMovement(db, actor, 'ยืนยันเบิกสต็อกงานปั๊ม', id, issued_at);
   return id;
 }
 
@@ -235,8 +241,8 @@ export async function releaseSurplus(db: Db, body: Body, actor: Recorder): Promi
     FROM pressing_orders o WHERE o.id=$1`, [source.order_id, pieces]);
   if (!enough) fail('จำนวนแผ่นที่ปล่อยมากกว่ายอดเกินของใบสั่งที่ยังไม่ปล่อย', 409);
 
-  const { id } = await one(db, `INSERT INTO pressing_releases(request_id,source_id,pieces,released_by)
-    VALUES($1,$2,$3,$4) RETURNING id`, [requestId, sourceId, pieces, actor.id]);
-  await audit(db, actor.username, 'ปล่อยยอดปั๊มส่วนเกิน', String(id));
+  const { id, released_at } = await one(db, `INSERT INTO pressing_releases(request_id,source_id,pieces,released_by,released_at)
+    VALUES($1,$2,$3,$4,clock_timestamp()) RETURNING id,released_at::text`, [requestId, sourceId, pieces, actor.id]);
+  await auditMovement(db, actor, 'ปล่อยยอดปั๊มส่วนเกิน', id, released_at);
   return id;
 }

@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import pg from 'pg';
 import { createApplication } from '../src/app.js';
-import { migrate } from '../src/database.js';
+import { all, migrate, one, transaction } from '../src/database.js';
+import { recordIssue, releaseSurplus } from '../src/pressing/stock.js';
 
 dotenv.config({ path: fileURLToPath(new URL('../../../.env', import.meta.url)), quiet: true });
 const databaseUrl = process.env.DATABASE_URL;
@@ -375,6 +376,32 @@ test('pressing catalog, orders and worker selection use session permissions', as
     const audit = (await call('/audit', 'GET', undefined, admin)).body.items;
     assert.equal(audit.filter((row: { actor: string; target: string; action: string }) =>
       row.actor === 'admin' && row.target === String(issued.body.id) && row.action === 'ยืนยันเบิกสต็อกงานปั๊ม').length, 1);
+  });
+
+  await t.test('withdrawal and release audit use the movement time after the transaction starts', async () => {
+    const { orderId, typeId } = await makeOrder('customer', 1000);
+    const source = await receive(orderId);
+    const issue = { ...issueInput(typeId, [issueLine(source.id, 200, 'order')]), order_id: orderId };
+    const release = { request_id: randomUUID(), source_id: source.id, pieces: 400 };
+    const actor = { id: 1, username: 'admin' };
+    const { cutoff, issueId, releaseId } = await transaction(pool, async db => {
+      await db.query('SELECT pg_sleep(0.02)');
+      const marker = await one(db, 'SELECT clock_timestamp()::text AS cutoff');
+      const issueId = await recordIssue(db, issue, actor);
+      const releaseId = await releaseSurplus(db, release, actor);
+      return { cutoff: marker.cutoff, issueId, releaseId };
+    });
+    const timing = await all(pool, `SELECT movement.action, movement.at >= $1::timestamptz AS after_start,
+      movement.at = a.created_at AS matches_audit FROM (
+        SELECT id,issued_at AS at,'ยืนยันเบิกสต็อกงานปั๊ม' AS action FROM pressing_issues WHERE id=$2
+        UNION ALL
+        SELECT id,released_at,'ปล่อยยอดปั๊มส่วนเกิน' FROM pressing_releases WHERE id=$3
+      ) movement JOIN audit a ON a.target=movement.id::text AND a.action=movement.action
+      ORDER BY a.id`, [cutoff, issueId, releaseId]);
+    assert.deepEqual(timing, [
+      { action: 'ยืนยันเบิกสต็อกงานปั๊ม', after_start: true, matches_audit: true },
+      { action: 'ปล่อยยอดปั๊มส่วนเกิน', after_start: true, matches_audit: true },
+    ]);
   });
 
   await t.test('a withdrawal checks the Bangkok rest date, recorded destination, type, and confirmation', async () => {
