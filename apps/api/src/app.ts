@@ -6,7 +6,15 @@ import express, {
 import { createServer } from "node:http";
 import { randomBytes } from "node:crypto";
 import type pg from "pg";
-import { all, one, transaction, PERMISSIONS, type Db } from "./database.js";
+import {
+  all,
+  one,
+  transaction,
+  PERMISSIONS,
+  audit as log,
+  type Db,
+} from "./database.js";
+import { handlePressingRoute } from "./pressing/routes.js";
 import {
   ApiError,
   fail,
@@ -74,12 +82,6 @@ export function createApplication(pool: pg.Pool, options: Options = {}) {
     }
   });
   app.use(express.json({ limit: "32kb", strict: true }));
-  const log = (db: Db, actor: string, action: string, target: string) =>
-    db.query("INSERT INTO audit(actor,action,target) VALUES($1,$2,$3)", [
-      actor,
-      action,
-      target,
-    ]);
   async function foreign(
     db: Db,
     table: "roles" | "positions" | "employees",
@@ -209,10 +211,28 @@ export function createApplication(pool: pg.Pool, options: Options = {}) {
     )?.[1];
     const user = await actor(pool, token);
     if (!user) fail("กรุณาเข้าสู่ระบบใหม่", 401);
-    const requirePermission = (permission: string) => {
-      if (!user.permissions.includes(permission))
+    const requirePermission = (permission: string, granted = user.permissions) => {
+      if (!granted.includes(permission))
         fail("คุณไม่มีสิทธิ์ทำรายการนี้", 403);
     };
+    if (
+      path.startsWith("/pressing/") &&
+      (await handlePressingRoute(req, res, {
+        db: pool,
+        require: requirePermission,
+        async mutate(permission, run) {
+          requirePermission("pressing.read");
+          requirePermission(permission);
+          return transaction(pool, async (db) => {
+            const currentActor = await actor(db, token);
+            if (!currentActor) fail("กรุณาเข้าสู่ระบบใหม่", 401);
+            requirePermission("pressing.read", currentActor.permissions);
+            requirePermission(permission, currentActor.permissions);
+            return run(db, currentActor);
+          });
+        },
+      }))
+    ) return;
     if (path === "/me" && method === "GET")
       return void res.json({ user, permissions: PERMISSIONS });
     if (path === "/logout" && method === "POST") {

@@ -76,6 +76,7 @@ async function legacyFixture(path: string) {
     CREATE TABLE users(id INTEGER PRIMARY KEY,username TEXT,name TEXT,password_hash TEXT,role_id INTEGER,employee_id INTEGER,active INTEGER,deleted INTEGER);
     CREATE TABLE sessions(token_hash TEXT PRIMARY KEY,user_id INTEGER,expires INTEGER);
     CREATE TABLE audit(id INTEGER PRIMARY KEY,actor TEXT,action TEXT,target TEXT,created_at TEXT);
+    INSERT INTO roles VALUES(1,'ผู้ดูแลระบบ','["roles.manage"]');
     INSERT INTO roles VALUES(7,'Synthetic custom role','["employees.read"]');
     INSERT INTO positions VALUES(8,'Synthetic position');
     INSERT INTO employees VALUES(19,'LEG-019','Synthetic archived person','',8,'081-2345678',0,1,'2025-01-02 03:04:05','2025-02-03 04:05:06');
@@ -95,7 +96,13 @@ test('legacy snapshot includes uncheckpointed WAL, preserves data and resets seq
     finally { writer.close(); }
   })();
   assert.equal(result.status, 'migrated');
-  assert.deepEqual(result.counts, { roles: 1, positions: 1, employees: 1, users: 1, audit: 2 });
+  assert.deepEqual(result.counts, { roles: 2, positions: 1, employees: 1, users: 1, audit: 2 });
+  const roles = (await pool.query('SELECT id,permissions FROM roles ORDER BY id')).rows;
+  assert.deepEqual(roles.map(row => [row.id, JSON.parse(row.permissions).sort()]), [
+    [1, ['pressing.correct', 'pressing.issue', 'pressing.manage', 'pressing.read',
+      'pressing.record', 'pressing.release', 'pressing.sort', 'roles.manage']],
+    [7, ['employees.read']],
+  ]);
   const employee = (await pool.query('SELECT * FROM employees')).rows[0];
   assert.equal(employee.id, 19); assert.equal(employee.archived, 1); assert.equal(employee.active, 0);
   assert.equal(employee.created_at.toISOString(), '2025-01-02T03:04:05.000Z');
@@ -114,6 +121,10 @@ test('legacy migration rejects nonempty destination and rolls back every table w
   await pool.query("INSERT INTO positions(name) VALUES('Existing')");
   await assert.rejects(migrateLegacy(pool, path, join(directory, 'backups')), /uninitialized|empty/i);
   await pool.query('DELETE FROM positions');
+  await pool.query(`INSERT INTO pressing_types(width,length,clay,pieces_per_rack,rest_days,destination)
+    VALUES(1,1,'แดง',750,4,'color')`);
+  await assert.rejects(migrateLegacy(pool, path, join(directory, 'backups')), /uninitialized|empty/i);
+  await pool.query('DELETE FROM pressing_types');
   const db = new DatabaseSync(path); db.exec('UPDATE users SET role_id=999'); db.close();
   await assert.rejects(migrateLegacy(pool, path, join(directory, 'backups')));
   assert.equal((await pool.query('SELECT * FROM employees')).rowCount, 0);

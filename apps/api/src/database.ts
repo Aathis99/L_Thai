@@ -1,11 +1,39 @@
 import pg from 'pg';
+import { migratePressing } from './pressing/schema.js';
+
 export type Db = pg.Pool | pg.PoolClient;
+const pressingPermissions = {
+  'pressing.read': 'ดูข้อมูลงานปั๊ม',
+  'pressing.manage': 'จัดการทะเบียนและใบสั่งผลิต',
+  'pressing.record': 'บันทึกยอดปั๊ม',
+  'pressing.issue': 'ยืนยันเบิกสต็อกงานปั๊ม',
+  'pressing.release': 'ปล่อยยอดปั๊มส่วนเกิน',
+  'pressing.sort': 'ส่งผลคัดหลังเผา',
+  'pressing.correct': 'ปรับยอดงานปั๊ม',
+};
 export const PERMISSIONS: Record<string,string> = {
   'employees.read':'ดูข้อมูลพนักงาน','employees.create':'เพิ่มพนักงาน','employees.update':'แก้ไขพนักงาน','employees.delete':'ลบพนักงาน',
-  'positions.manage':'จัดการตำแหน่งงาน','users.manage':'จัดการบัญชีผู้ใช้','roles.manage':'จัดการบทบาทและสิทธิ์','audit.read':'ดูประวัติการเปลี่ยนแปลง'
+  'positions.manage':'จัดการตำแหน่งงาน','users.manage':'จัดการบัญชีผู้ใช้','roles.manage':'จัดการบทบาทและสิทธิ์','audit.read':'ดูประวัติการเปลี่ยนแปลง',
+  ...pressingPermissions,
 };
+export const baselineRoles = [
+  { id: 1, name: 'ผู้ดูแลระบบ', permissions: Object.keys(PERMISSIONS) },
+  { id: 2, name: 'ผู้บันทึกข้อมูล', permissions: ['employees.read', 'employees.create', 'employees.update'] },
+  { id: 3, name: 'ดูข้อมูล', permissions: ['employees.read'] },
+];
 export async function all(db:Db,sql:string,values:unknown[]=[]){return (await db.query(sql,values)).rows;}
 export async function one(db:Db,sql:string,values:unknown[]=[]){return (await all(db,sql,values))[0];}
+export function audit(db: Db, actor: string, action: string, target: string) {
+  return db.query('INSERT INTO audit(actor,action,target) VALUES($1,$2,$3)', [actor, action, target]);
+}
+export async function grantAdminPressingPermissions(db: Db): Promise<void> {
+  const admin = await one(db, 'SELECT permissions FROM roles WHERE id=1');
+  if (!admin) return;
+  const permissions: string[] = JSON.parse(admin.permissions);
+  const missing = Object.keys(pressingPermissions).filter(permission => !permissions.includes(permission));
+  if (missing.length)
+    await db.query('UPDATE roles SET permissions=$1 WHERE id=1', [JSON.stringify([...permissions, ...missing])]);
+}
 export async function transaction<T>(pool:pg.Pool,work:(db:pg.PoolClient)=>Promise<T>):Promise<T>{
   const client=await pool.connect();
   try { await client.query('BEGIN'); await client.query('SELECT pg_advisory_xact_lock(20261109)'); const value=await work(client); await client.query('COMMIT'); return value; }
@@ -31,8 +59,10 @@ export async function migrate(pool:pg.Pool){
       CREATE TABLE IF NOT EXISTS audit(id SERIAL PRIMARY KEY,actor TEXT NOT NULL,action TEXT NOT NULL,target TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now());
       CREATE TABLE IF NOT EXISTS data_migrations(key TEXT PRIMARY KEY,details JSONB NOT NULL DEFAULT '{}',created_at TIMESTAMPTZ NOT NULL DEFAULT now());
     `);
-    const roles=[[1,'ผู้ดูแลระบบ',Object.keys(PERMISSIONS)],[2,'ผู้บันทึกข้อมูล',['employees.read','employees.create','employees.update']],[3,'ดูข้อมูล',['employees.read']]];
-    for(const [id,name,permissions] of roles) await db.query('INSERT INTO roles(id,name,permissions) VALUES($1,$2,$3) ON CONFLICT(id) DO NOTHING',[id,name,JSON.stringify(permissions)]);
+    await migratePressing(db);
+    for (const { id, name, permissions } of baselineRoles)
+      await db.query('INSERT INTO roles(id,name,permissions) VALUES($1,$2,$3) ON CONFLICT(id) DO NOTHING',[id,name,JSON.stringify(permissions)]);
+    await grantAdminPressingPermissions(db);
     await db.query("SELECT setval(pg_get_serial_sequence('roles','id'),GREATEST((SELECT max(id) FROM roles),1))");
   });
 }
