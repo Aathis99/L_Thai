@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import sys
 from io import BytesIO
 from pathlib import Path
 from zipfile import BadZipFile
@@ -60,17 +61,24 @@ def extract(source):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("workbook", type=Path)
-    parser.add_argument("prepared_json", type=Path)
+    destination = parser.add_mutually_exclusive_group(required=True)
+    destination.add_argument("prepared_json", type=Path, nargs="?")
+    destination.add_argument("--stdout", action="store_true")
     args = parser.parse_args()
     try:
         output = args.prepared_json
-        if output.resolve() == args.workbook.resolve() or (
-            output.exists() and output.samefile(args.workbook)
+        if output is not None and (
+            output.resolve() == args.workbook.resolve()
+            or (output.exists() and output.samefile(args.workbook))
         ):
             raise ValueError("Prepared JSON must be written to a separate file")
         payload = extract(args.workbook.read_bytes())
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        data = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+        if args.stdout:
+            sys.stdout.buffer.write(data.encode("utf-8"))
+        else:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(data, encoding="utf-8")
     except (OSError, ValueError, BadZipFile, InvalidFileException) as error:
         parser.exit(1, f"{error}\n")
 

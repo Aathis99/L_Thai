@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, type TestContext } from 'node:test';
@@ -143,12 +143,8 @@ test('concurrent color chart creates append with distinct display orders', async
   assert.deepEqual(items.map((item: { name: string }) => item.name).sort(), ['จ้อ', 'ขาว', 'แดง'].sort());
 });
 
-async function seedFiles(t: TestContext, source = 'synthetic workbook bytes') {
-  const directory = await mkdtemp(join(tmpdir(), 'lthai-color-chart-'));
-  t.after(() => rm(directory, { recursive: true, force: true }));
-  const workbook = join(directory, 'synthetic.xlsx');
-  const prepared = join(directory, 'synthetic.json');
-  const payload = {
+function seedPayload(source = 'synthetic workbook bytes') {
+  return {
     sourceSha256: createHash('sha256').update(source).digest('hex'),
     sheet: 'Sheet1',
     items: Array.from({ length: 90 }, (_, index) => ({
@@ -157,21 +153,49 @@ async function seedFiles(t: TestContext, source = 'synthetic workbook bytes') {
       note: index === 78 || index === 79 ? 'เตือนทดสอบร่วม' : index === 82 ? 'เตือนทดสอบเฉพาะ' : null,
     })),
   };
-  const save = () => writeFile(prepared, JSON.stringify(payload));
-  await writeFile(workbook, source);
-  await save();
-  return { workbook, prepared, payload, save };
 }
 
 const runFile = promisify(execFile);
+const testPython = process.env.LTHAI_COLOR_CHART_PYTHON;
+const extractor = fileURLToPath(new URL('../../../scripts/extract-color-chart.py', import.meta.url));
 const command = fileURLToPath(new URL('../src/color-chart/seed-command.ts', import.meta.url));
-function seedCommand(mode: string, workbook: string, prepared: string) {
+
+async function seedFiles(t: TestContext) {
+  assert.ok(testPython);
+  const python = testPython;
+  const directory = await mkdtemp(join(tmpdir(), 'lthai-color-chart-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const workbook = join(directory, 'synthetic.xlsx');
+  const prepared = join(directory, 'synthetic.json');
+  const generate = (prefix: string) => runFile(python, ['-c', `
+import json
+import sys
+from openpyxl import Workbook
+book = Workbook()
+sheet = book.active
+sheet.title = 'Sheet1'
+names = json.loads(sys.argv[3])
+for order in range(1, 91):
+    sheet.cell(order + 2, 1, str(order) if order % 2 else order)
+    sheet.cell(order + 2, 2, '  ' + names.get(str(order), f'{sys.argv[2]} {order}') + ' (TEST  COLOR)  ')
+sheet['B95'] = '   separate test note   '
+sheet['B96'] = 'shared test note'
+book.save(sys.argv[1])
+`, workbook, prefix, JSON.stringify({ 79: 'เขียวศิลาดล', 80: 'ศิลาดล', 83: 'ขาวฟ้า' })]);
+  await generate('Synthetic');
+  await runFile(python, [extractor, workbook, prepared]);
+  const payload = JSON.parse(await readFile(prepared, 'utf8'));
+  return { workbook, prepared, payload, generate };
+}
+
+function seedCommand(mode: string, workbook: string, prepared: string, databaseUrl: string | null =
+  'postgresql://unused:unused@127.0.0.1:1/unused') {
   return runFile(process.execPath, ['--import', 'tsx', command, mode, workbook, prepared], {
-    env: { ...process.env, DATABASE_URL: 'postgresql://unused:unused@127.0.0.1:1/unused' },
+    env: { ...process.env, DATABASE_URL: databaseUrl ?? undefined },
   });
 }
 
-test('color chart preview prints 90 verified ordered rows and three notes without a database', async t => {
+test('color chart preview prints 90 verified ordered rows and three notes without a database', { skip: !testPython }, async t => {
   const { workbook, prepared, payload } = await seedFiles(t);
   const { stdout } = await seedCommand('--preview', workbook, prepared);
   const preview = JSON.parse(stdout);
@@ -180,45 +204,61 @@ test('color chart preview prints 90 verified ordered rows and three notes withou
   assert.deepEqual(preview.items.map((item: { display_order: number }) => item.display_order),
     Array.from({ length: 90 }, (_, index) => index + 1));
   assert.deepEqual(preview.items.filter((item: { note: string | null }) => item.note), [
-    { display_order: 79, name: 'สีทดสอบ 79 (TEST  COLOR)', note: 'เตือนทดสอบร่วม' },
-    { display_order: 80, name: 'สีทดสอบ 80 (TEST  COLOR)', note: 'เตือนทดสอบร่วม' },
-    { display_order: 83, name: 'สีทดสอบ 83 (TEST  COLOR)', note: 'เตือนทดสอบเฉพาะ' },
+    { display_order: 79, name: 'เขียวศิลาดล (TEST  COLOR)', note: 'shared test note' },
+    { display_order: 80, name: 'ศิลาดล (TEST  COLOR)', note: 'shared test note' },
+    { display_order: 83, name: 'ขาวฟ้า (TEST  COLOR)', note: 'separate test note' },
   ]);
 });
 
-test('both seed modes reject changed workbook bytes before connecting', async t => {
-  const { workbook, prepared } = await seedFiles(t);
-  await writeFile(workbook, 'changed synthetic workbook bytes');
+test('both seed modes reject changed workbook bytes before connecting', { skip: !testPython }, async t => {
+  const { workbook, prepared, generate } = await seedFiles(t);
+  await generate('Changed');
   for (const mode of ['--preview', '--apply']) {
     await assert.rejects(seedCommand(mode, workbook, prepared), /SHA-256/);
   }
 });
 
-test('seed rejects duplicate prepared names and invalid order before inserting', async t => {
-  const { pool } = await fixture(t);
-  const { workbook, prepared, payload, save } = await seedFiles(t);
-  const { applyColorChartSeed } = await import('../src/color-chart/seed.js');
+test('both seed modes reject prepared edits that retain the workbook SHA-256', { skip: !testPython }, async t => {
+  const { workbook, prepared, payload } = await seedFiles(t);
+  payload.items[0].name = 'Changed prepared name';
+  await writeFile(prepared, JSON.stringify(payload));
+  await assert.rejects(seedCommand('--preview', workbook, prepared), /ข้อมูลที่เตรียมไม่ตรงกับ Excel/);
+  await assert.rejects(seedCommand('--apply', workbook, prepared, null), /ข้อมูลที่เตรียมไม่ตรงกับ Excel/);
+});
+
+test('apply requires an explicit database URL after verifying the input files', { skip: !testPython }, async t => {
+  const { workbook, prepared } = await seedFiles(t);
+  await assert.rejects(seedCommand('--apply', workbook, prepared, null), /กรุณาระบุ DATABASE_URL/);
+});
+
+test('preview rejects non-XLSX bytes even when the SHA-256 matches', { skip: !testPython }, async t => {
+  const { workbook, prepared } = await seedFiles(t);
+  const source = 'synthetic workbook bytes';
+  await writeFile(workbook, source);
+  await writeFile(prepared, JSON.stringify(seedPayload(source)));
+  await assert.rejects(seedCommand('--preview', workbook, prepared), /เปิดไฟล์ Excel/);
+});
+
+test('seed rejects duplicate prepared names and invalid order', async () => {
+  const payload = seedPayload();
+  const { validateColorChartSeed } = await import('../src/color-chart/seed.js');
   const originalName = payload.items[89].name;
   payload.items[89].name = 'สีทดสอบ 1 (test color)';
-  await save();
-  await assert.rejects(applyColorChartSeed(pool, workbook, prepared), /ชื่อซ้ำ/);
+  assert.throws(() => validateColorChartSeed(payload), /ชื่อซ้ำ/);
   payload.items[89].name = originalName;
   payload.items[89].display_order = 89;
-  await save();
-  await assert.rejects(applyColorChartSeed(pool, workbook, prepared), /ลำดับ/);
-  assert.equal((await pool.query('SELECT id FROM color_chart_entries')).rowCount, 0);
-  assert.equal((await pool.query('SELECT key FROM data_migrations')).rowCount, 0);
+  assert.throws(() => validateColorChartSeed(payload), /ลำดับ/);
 });
 
 test('seed leaves the catalog and migration marker unchanged on name or order conflict', async t => {
   const { pool } = await fixture(t);
-  const { workbook, prepared } = await seedFiles(t);
-  const { applyColorChartSeed } = await import('../src/color-chart/seed.js');
+  const { applyColorChartSeed, validateColorChartSeed } = await import('../src/color-chart/seed.js');
+  const seed = validateColorChartSeed(seedPayload());
   const added = await pool.query(`INSERT INTO color_chart_entries(display_order,name,normalized_name)
     VALUES (91,'สีทดสอบ 90 (test color)','สีทดสอบ 90 (test color)') RETURNING id`);
-  await assert.rejects(applyColorChartSeed(pool, workbook, prepared), /#91/);
+  await assert.rejects(applyColorChartSeed(pool, seed), /#91/);
   await pool.query(`UPDATE color_chart_entries SET display_order=90,name='สีอื่น',normalized_name='สีอื่น'`);
-  await assert.rejects(applyColorChartSeed(pool, workbook, prepared), /#90/);
+  await assert.rejects(applyColorChartSeed(pool, seed), /#90/);
   assert.deepEqual((await pool.query('SELECT id,display_order,name FROM color_chart_entries')).rows, [
     { id: added.rows[0].id, display_order: 90, name: 'สีอื่น' },
   ]);
@@ -227,9 +267,10 @@ test('seed leaves the catalog and migration marker unchanged on name or order co
 
 test('a successful seed is applied once and repeat preserves subsequent edits and deletions', async t => {
   const { pool } = await fixture(t);
-  const { workbook, prepared, payload } = await seedFiles(t);
-  const { applyColorChartSeed } = await import('../src/color-chart/seed.js');
-  const apply = () => applyColorChartSeed(pool, workbook, prepared);
+  const payload = seedPayload();
+  const { applyColorChartSeed, validateColorChartSeed } = await import('../src/color-chart/seed.js');
+  const seed = validateColorChartSeed(payload);
+  const apply = () => applyColorChartSeed(pool, seed);
   const results = await Promise.all([apply(), apply()]);
   assert.deepEqual(results.map(result => result.status).sort(), ['imported', 'skipped']);
   assert.deepEqual((await pool.query(
@@ -242,8 +283,8 @@ test('a successful seed is applied once and repeat preserves subsequent edits an
   await pool.query(`UPDATE color_chart_entries SET name='แก้แล้ว',normalized_name='แก้แล้ว' WHERE display_order=1`);
   await pool.query('DELETE FROM color_chart_entries WHERE display_order=2');
   assert.equal((await apply()).status, 'skipped');
-  const other = await seedFiles(t, 'a different synthetic workbook');
-  await assert.rejects(applyColorChartSeed(pool, other.workbook, other.prepared), /SHA-256/);
+  const other = validateColorChartSeed(seedPayload('a different synthetic workbook'));
+  await assert.rejects(applyColorChartSeed(pool, other), /SHA-256/);
   assert.deepEqual((await pool.query(
     'SELECT display_order,name,note FROM color_chart_entries ORDER BY display_order',
   )).rows, [{ display_order: 1, name: 'แก้แล้ว', note: null }, ...payload.items.slice(2)]);

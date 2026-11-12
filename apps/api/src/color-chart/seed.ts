@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
 import type { Pool } from 'pg';
 import { one, transaction } from '../database.js';
 import { validateColorChartName, validateColorChartNote } from './catalog.js';
@@ -15,11 +13,11 @@ function record(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-export async function readColorChartSeed(workbook: string, prepared: string) {
-  const sourceSha256 = createHash('sha256').update(await readFile(workbook)).digest('hex');
-  const payload = record(JSON.parse(await readFile(prepared, 'utf8')));
-  if (payload.sourceSha256 !== sourceSha256) {
-    throw new Error('SHA-256 ของ Excel ไม่ตรงกับข้อมูลที่เตรียม กรุณาเตรียมและตรวจข้อมูลใหม่');
+export function validateColorChartSeed(input: unknown) {
+  const payload = record(input);
+  const { sourceSha256 } = payload;
+  if (typeof sourceSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(sourceSha256)) {
+    throw new Error('ข้อมูลตั้งต้นชาร์ตสีต้องระบุ SHA-256 ของ Excel');
   }
   if (payload.sheet !== SHEET || !Array.isArray(payload.items) || payload.items.length !== ITEM_COUNT) {
     throw new Error(`ข้อมูลตั้งต้นชาร์ตสีต้องมาจาก ${SHEET} และมี ${ITEM_COUNT} รายการ`);
@@ -50,8 +48,8 @@ export async function readColorChartSeed(workbook: string, prepared: string) {
   return { sourceSha256, sheet: SHEET, items };
 }
 
-export async function applyColorChartSeed(pool: Pool, workbook: string, prepared: string) {
-  const { sourceSha256, sheet, items } = await readColorChartSeed(workbook, prepared);
+export async function applyColorChartSeed(pool: Pool, seed: ReturnType<typeof validateColorChartSeed>) {
+  const { sourceSha256, sheet, items } = seed;
   return transaction(pool, async db => {
     const previous = await one(db, 'SELECT details FROM data_migrations WHERE key=$1', [SEED_KEY]);
     if (previous) {
