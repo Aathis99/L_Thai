@@ -6,7 +6,7 @@
 
 **Architecture:** เพิ่มทะเบียนและตารางภาพใน PostgreSQL ผ่านระบบบัญชีและสิทธิ์เดิม API รายการส่งข้อมูลชื่อและสถานะภาพ ส่วน API ภาพส่งเฉพาะภาพที่ผู้ใช้มีสิทธิ์ดู คำสั่งตั้งต้นตรวจและนำเข้าข้อมูลจากไฟล์เตรียมนอก Git ภายในธุรกรรมเดียว
 
-**Tech Stack:** Node ≥26, TypeScript, Next.js/React/Tailwind, Express, PostgreSQL 18, Docker Compose, node:test, Python standard library สำหรับอ่าน XLSX และ Sharp เวอร์ชัน 0.35.5 ที่มีอยู่ใน package lock สำหรับแปลงภาพฝั่ง API
+**Tech Stack:** Node ≥26, TypeScript, Next.js/React/Tailwind, Express, PostgreSQL 18, Docker Compose, node:test, Python กับ openpyxl 3.1.5 จาก `requirements-import.txt` สำหรับอ่าน XLSX และ Sharp เวอร์ชัน 0.35.5 ที่มีอยู่ใน package lock สำหรับแปลงภาพฝั่ง API
 
 **Spec:** [แบบระบบชาร์ตสีรุ่นแรก](../specs/2026-11-12-color-chart-design.md) ผู้ใช้ยืนยันแล้ว
 
@@ -96,8 +96,8 @@
 
 **Files:** เพิ่ม `docs/color-chart-startup.md` อัปเดต `docs/CURRENT.md` หลังตรวจจริง
 
-- [ ] เปิด Docker ชุดทดสอบแยก ทดสอบผ่านเบราว์เซอร์เดสก์ท็อปและมือถือด้วยผู้จัดการและผู้ดู ตรวจ 90 รายการ ค้นชื่อ อ่านหมายเหตุ เพิ่มชื่อ เปลี่ยนรูป ลบเฉพาะรูป และปุ่มจัดการตามสิทธิ์
-- [ ] รัน `npm run check`, `npm run build` และ `npm test` พร้อม opt-in Docker handoff integration บนฐานทดสอบ คาดว่าทุกชุดผ่าน
-- [ ] สำรองฐานทดสอบที่มีทะเบียนและภาพ กู้คืนไปอีกฐานทดสอบ และเทียบลำดับ ชื่อ หมายเหตุ SHA-256 ของภาพ รวมถึงเปิดภาพผ่าน API หลังคืนข้อมูล
-- [ ] เขียนคู่มือคำสั่ง preview/apply และการให้สิทธิ์ ระบุฐานและ commit ที่ทดสอบ ผลที่รันจริง และขั้นตอนเปิดใช้ใน `docs/CURRENT.md`
-- [ ] ตรวจ `git diff --check` แล้ว Commit ด้วย `docs: document color chart import and verification`
+- [x] เปิด Docker ชุดทดสอบแยก ทดสอบผ่านเบราว์เซอร์เดสก์ท็อปและมือถือด้วยผู้จัดการและผู้ดู ตรวจ 90 รายการ ค้นชื่อ อ่านหมายเหตุ เพิ่มชื่อ เปลี่ยนรูป ลบเฉพาะรูป และปุ่มจัดการตามสิทธิ์
+- [x] รัน `npm run check`, `npm run build` และ `npm test` พร้อม opt-in Docker handoff integration บนฐานทดสอบ คาดว่าทุกชุดผ่าน
+- [x] สำรองฐานทดสอบที่มีทะเบียนและภาพ กู้คืนไปอีกฐานทดสอบ และเทียบลำดับ ชื่อ หมายเหตุ SHA-256 ของภาพ รวมถึงเปิดภาพผ่าน API หลังคืนข้อมูล
+- [x] เขียนคู่มือคำสั่ง preview/apply และการให้สิทธิ์ ระบุฐานและ commit ที่ทดสอบ ผลที่รันจริง และขั้นตอนเปิดใช้ใน `docs/CURRENT.md`
+- [x] ตรวจ `git diff --check` แล้ว Commit ด้วย `docs: document color chart import and verification`
