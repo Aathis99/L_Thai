@@ -12,6 +12,8 @@ const OUTPUT_SETTINGS = [
   { dimension: 1024, quality: 80 },
   { dimension: 768, quality: 65 },
   { dimension: 512, quality: 55 },
+  { dimension: 384, quality: 55 },
+  { dimension: 256, quality: 55 },
 ];
 
 function matchesSignature(input: Buffer, contentType: string): boolean {

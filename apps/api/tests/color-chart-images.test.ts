@@ -176,6 +176,25 @@ test('a highly textured image is stored within the WebP size limit', async t => 
   assert.equal(format, 'webp');
 });
 
+test('a high-entropy transparent PNG is stored within the WebP size limit', async t => {
+  const { imagePath, request, upload } = await fixture(t);
+  const pixels = Buffer.alloc(512 * 512 * 4);
+  let state = 1;
+  for (let index = 0; index < pixels.length; index++) {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    pixels[index] = state & 0xff;
+  }
+  const source = await sharp(pixels, { raw: { width: 512, height: 512, channels: 4 } }).png().toBuffer();
+  assert.equal((await upload(source)).status, 200);
+  const encoded = await imageBytes(await request(imagePath));
+  assert.ok(encoded.length <= 256 * 1024);
+  const metadata = await sharp(encoded).metadata();
+  assert.equal(metadata.format, 'webp');
+  assert.equal(metadata.hasAlpha, true);
+});
+
 test('replacing or removing a photo leaves the entry intact and deleting the entry cascades', async t => {
   const { pool, chart, entry, id, imagePath, request, upload } = await fixture(t);
   const list = async (hasImage: boolean) => {
