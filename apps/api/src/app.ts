@@ -14,7 +14,7 @@ import {
   audit as log,
   type Db,
 } from "./database.js";
-import { handleColorChartRoute } from "./color-chart/routes.js";
+import { COLOR_CHART_IMAGE_PATH, handleColorChartRoute } from "./color-chart/routes.js";
 import { handlePressingRoute } from "./pressing/routes.js";
 import {
   ApiError,
@@ -70,6 +70,7 @@ export function createApplication(pool: pg.Pool, options: Options = {}) {
     path: "/",
     secure: options.secureCookies || false,
   };
+  const parseJson = express.json({ limit: "32kb", strict: true });
   app.use((req, res, next) => {
     res.set({
       "Cache-Control": "no-store",
@@ -77,20 +78,22 @@ export function createApplication(pool: pg.Pool, options: Options = {}) {
       "Referrer-Policy": "no-referrer",
     });
     try {
+      const imageUpload = req.method === "PUT" && req.path.startsWith("/api/") &&
+        COLOR_CHART_IMAGE_PATH.test(req.path.slice("/api".length));
       if (!hosts.has(new URL("http://" + req.get("host")).hostname))
         fail("Host ไม่ได้รับอนุญาต", 403);
       if (!["GET", "HEAD"].includes(req.method)) {
         if (req.get("origin") && !origins.has(req.get("origin")!))
           fail("ไม่อนุญาตคำขอจากเว็บไซต์อื่น", 403);
-        if (req.method !== "DELETE" && !req.is("application/json"))
+        if (!imageUpload && req.method !== "DELETE" && !req.is("application/json"))
           fail("ต้องส่งข้อมูล JSON", 415);
       }
-      next();
+      if (imageUpload) next();
+      else parseJson(req, res, next);
     } catch (error) {
       next(error);
     }
   });
-  app.use(express.json({ limit: "32kb", strict: true }));
   async function foreign(
     db: Db,
     table: "roles" | "positions" | "employees",
