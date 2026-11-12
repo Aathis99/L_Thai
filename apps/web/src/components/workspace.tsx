@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import Auth from "./auth";
 import Dialog, { type DialogState } from "./dialog";
 import { Brand } from "./fields";
+import PressingPanel from "./pressing/panel";
 import RecordTable from "./record-table";
+import { canOpenPressing } from "../lib/pressing";
 import {
   allowed,
   emptyRecords,
@@ -17,6 +19,20 @@ import {
   type SessionUser,
   type View,
 } from "../lib/types";
+
+type WorkspaceView = View | "pressing";
+const workspaceViews: WorkspaceView[] = [...views, "pressing"];
+
+function canOpenView(user: SessionUser, view: WorkspaceView) {
+  return view === "pressing"
+    ? canOpenPressing(user.permissions)
+    : allowed(user, view);
+}
+
+function workspaceLabel(view: WorkspaceView | null) {
+  if (view === "pressing") return "งานปั๊ม";
+  return view ? labels[view] : "พื้นที่ทำงาน";
+}
 
 class ApiError extends Error {
   constructor(
@@ -35,7 +51,7 @@ export default function Workspace() {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [permissions, setPermissions] = useState<Record<string, string>>({});
   const [records, setRecords] = useState<Records>(emptyRecords);
-  const [view, setView] = useState<View | null>("employees");
+  const [view, setView] = useState<WorkspaceView | null>("employees");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("current");
   const [dialog, setDialog] = useState<DialogState | null>(null);
@@ -84,9 +100,9 @@ export default function Workspace() {
     setUser(me.user);
     setPermissions(me.permissions);
     setView((previous) =>
-      previous && allowed(me.user, previous)
+      previous && canOpenView(me.user, previous)
         ? previous
-        : (views.find((candidate) => allowed(me.user, candidate)) ?? null),
+        : (workspaceViews.find((candidate) => canOpenView(me.user, candidate)) ?? null),
     );
     const can = (permission: string) =>
       me.user.permissions.includes(permission);
@@ -150,7 +166,7 @@ export default function Workspace() {
     return () => window.removeEventListener("focus", onFocus);
   }, [mode, refresh]);
 
-  async function navigate(next: View) {
+  async function navigate(next: WorkspaceView) {
     setView(next);
     setQuery("");
     setFilter("current");
@@ -233,10 +249,12 @@ export default function Workspace() {
       </>
     );
   const can = (permission: string) => user.permissions.includes(permission);
+  const showPressing = canOpenPressing(user.permissions);
   const current = records.employees.filter((employee) => !employee.archived);
   const active = current.filter((employee) => employee.active);
   const create = () => {
-    if (view && view !== "audit") setDialog({ kind: "editor", view });
+    if (view && view !== "audit" && view !== "pressing")
+      setDialog({ kind: "editor", view });
   };
   return (
     <>
@@ -253,36 +271,46 @@ export default function Workspace() {
             </div>
             <span className="live-dot" />
           </div>
-          <div className="nav-title">บุคลากรและการเข้าถึง</div>
-          <nav aria-label="เมนูหลัก">
-            {views
-              .filter((candidate) => allowed(user, candidate))
+          <div className="nav-title">
+            {showPressing ? "เมนูโรงงาน" : "บุคลากรและการเข้าถึง"}
+          </div>
+          <nav
+            aria-label="เมนูหลัก"
+            className={showPressing ? "nav-has-pressing" : undefined}
+          >
+            {workspaceViews
+              .filter((candidate) => canOpenView(user, candidate))
               .map((candidate) => (
                 <button
                   key={candidate}
                   onClick={() => void navigate(candidate)}
                   className={`nav-item ${view === candidate ? "selected" : ""}`}
                   aria-current={view === candidate ? "page" : undefined}
+                  aria-label={candidate === "pressing" ? "งานปั๊ม" : undefined}
                 >
-                  <span aria-hidden="true">{symbols[candidate]}</span>
-                  {labels[candidate]}
+                  <span aria-hidden="true">
+                    {candidate === "pressing" ? "▧" : symbols[candidate]}
+                  </span>
+                  {workspaceLabel(candidate)}
                   {candidate === "employees" && <small>{current.length}</small>}
                 </button>
               ))}
           </nav>
-          <div className="roadmap">
-            <span>พัฒนาทีละส่วน</span>
-            <strong>เริ่มจากคน พร้อมต่อยอดงาน</strong>
-            <p>
-              ออเดอร์และกระบวนการผลิต
-              <br />
-              อยู่ระหว่างเก็บข้อมูลหน้างาน
-            </p>
-            <div className="roadmap-line">
-              <i />
+          {!showPressing && (
+            <div className="roadmap">
+              <span>พัฒนาทีละส่วน</span>
+              <strong>เริ่มจากคน พร้อมต่อยอดงาน</strong>
+              <p>
+                ออเดอร์และกระบวนการผลิต
+                <br />
+                อยู่ระหว่างเก็บข้อมูลหน้างาน
+              </p>
+              <div className="roadmap-line">
+                <i />
+              </div>
+              <small>ระยะ 1 · พนักงานและสิทธิ์</small>
             </div>
-            <small>ระยะ 1 · พนักงานและสิทธิ์</small>
-          </div>
+          )}
           <div className="sidebar-foot">
             <span className="avatar" aria-hidden="true">
               {user.name.slice(0, 1)}
@@ -306,7 +334,7 @@ export default function Workspace() {
             <div>
               <span className="breadcrumb">โรงงานกระเบื้อง</span>
               <span className="slash">/</span>
-              {view ? labels[view] : "พื้นที่ทำงาน"}
+              {workspaceLabel(view)}
             </div>
             <div className="topbar-right">
               <span className="local-label">
@@ -329,16 +357,19 @@ export default function Workspace() {
           <main className="main">
             <div className="page-head">
               <div>
-                <p className="eyebrow">PEOPLE &amp; ACCESS</p>
-                <h1>{view ? labels[view] : "พื้นที่ทำงาน"}</h1>
+                {view !== "pressing" && <p className="eyebrow">PEOPLE &amp; ACCESS</p>}
+                <h1>{workspaceLabel(view)}</h1>
                 <p>
-                  {view
-                    ? subtitles[view]
-                    : "บัญชีนี้ยังไม่ได้รับสิทธิ์เข้าถึงเมนู กรุณาติดต่อผู้ดูแลระบบ"}
+                  {view === "pressing"
+                    ? "ใบสั่งผลิต ยอดปั๊ม สต็อก และผลคัดหลังเผา"
+                    : view
+                      ? subtitles[view]
+                      : "บัญชีนี้ยังไม่ได้รับสิทธิ์เข้าถึงเมนู กรุณาติดต่อผู้ดูแลระบบ"}
                 </p>
               </div>
               {view &&
                 view !== "audit" &&
+                view !== "pressing" &&
                 (view === "employees"
                   ? can("employees.create")
                   : can(`${view}.manage`)) && (
@@ -422,7 +453,10 @@ export default function Workspace() {
                 ส่วนบทบาทกำหนดสิทธิ์ที่ใช้ในโปรแกรม การเปลี่ยนสิทธิ์มีผลทันที
               </div>
             )}
-            {view && (
+            {view === "pressing" && showPressing && (
+              <PressingPanel api={api} user={user} />
+            )}
+            {view && view !== "pressing" && (
               <section className="panel">
                 <div className="panel-toolbar">
                   <div>
@@ -481,10 +515,12 @@ export default function Workspace() {
                 </div>
               </section>
             )}
-            <footer className="page-foot">
-              <span>LThai Factory · พื้นฐานที่ดี เริ่มจากข้อมูลที่ชัดเจน</span>
-              <span>PEOPLE &amp; ACCESS · PHASE 01</span>
-            </footer>
+            {view !== "pressing" && (
+              <footer className="page-foot">
+                <span>LThai Factory · พื้นฐานที่ดี เริ่มจากข้อมูลที่ชัดเจน</span>
+                <span>PEOPLE &amp; ACCESS · PHASE 01</span>
+              </footer>
+            )}
           </main>
         </div>
       </div>
