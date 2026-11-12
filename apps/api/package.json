@@ -5,7 +5,8 @@
     "test": "tsx --test tests/*.test.ts",
     "db:migrate": "tsx src/commands.ts schema",
     "data:migrate": "tsx src/commands.ts legacy",
-    "employees:import": "tsx src/commands.ts employees"
+    "employees:import": "tsx src/commands.ts employees",
+    "color-chart:seed": "tsx src/color-chart/seed-command.ts"
   },
   "dependencies": { "express": "^5.1.0", "pg": "^8.16.0", "dotenv": "^17.2.0" },
   "devDependencies": { "typescript": "^5.9.0", "tsx": "^4.20.0", "@types/node": "^24.0.0", "@types/express": "^5.0.0", "@types/pg": "^8.15.0" }
