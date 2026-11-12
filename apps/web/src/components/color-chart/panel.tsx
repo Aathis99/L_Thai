@@ -5,18 +5,31 @@ import { canManageColorChart, filterColorChart, type ColorChartItem } from "../.
 import type { Api, SessionUser } from "../../lib/types";
 
 const chartPath = "/color-chart";
-type Change = "save" | "delete" | "upload-image" | "delete-image";
+type Change =
+  | { kind: "save"; fields: Pick<ColorChartItem, "name" | "note"> }
+  | { kind: "delete" | "upload-image" | "delete-image" };
 
 function ChartImage({ item, version, thumbnail = false }: { item: ColorChartItem; version: number; thumbnail?: boolean }) {
   const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const className = thumbnail ? "chart-thumbnail" : "chart-preview";
-  if (!item.has_image || failed) {
-    return <span className={`${className} chart-placeholder`}>{failed ? "โหลดภาพไม่สำเร็จ" : "ยังไม่มีภาพ"}</span>;
+  if (!item.has_image) return <span className={`${className} chart-placeholder`}>ยังไม่มีภาพ</span>;
+  if (failed) {
+    return (
+      <button type="button" className={`${className} chart-placeholder chart-image-retry`}
+        aria-label={`ลองโหลดภาพใหม่ ${item.name}`} onClick={() => {
+          setAttempt((current) => current + 1);
+          setFailed(false);
+        }}>
+        ลองโหลดภาพใหม่
+      </button>
+    );
   }
+  const cacheKey = attempt ? `?v=${version}&retry=${attempt}` : version ? `?v=${version}` : "";
   return (
     <img
       className={className}
-      src={`/api${chartPath}/${item.id}/image${version ? `?v=${version}` : ""}`}
+      src={`/api${chartPath}/${item.id}/image${cacheKey}`}
       alt={thumbnail ? "" : `ภาพตัวอย่าง ${item.name}`}
       loading={thumbnail ? "lazy" : undefined}
       onError={() => setFailed(true)}
@@ -24,11 +37,13 @@ function ChartImage({ item, version, thumbnail = false }: { item: ColorChartItem
   );
 }
 
-function ChartDialog({ api, item, canManage, version, onClose, onChanged }: {
+function ChartDialog({ api, item, canManage, version, refreshError, onRetryRefresh, onClose, onChanged }: {
   api: Api;
   item?: ColorChartItem;
   canManage: boolean;
   version: number;
+  refreshError: string;
+  onRetryRefresh: () => void;
   onClose: () => void;
   onChanged: (id: number, change: Change) => Promise<void>;
 }) {
@@ -55,10 +70,11 @@ function ChartDialog({ api, item, canManage, version, onClose, onChanged }: {
     setError("");
     setMessage("");
     try {
-      const result = await api<{ id: number }>(`${path}${suffix}`, method, data);
+      const body = action.kind === "save" ? action.fields : data;
+      const result = await api<{ id: number }>(`${path}${suffix}`, method, body);
       await onChanged(result.id, action);
       setEditing(false);
-      setMessage(action === "upload-image" ? "บันทึกภาพแล้ว" : action === "delete-image" ? "ลบภาพแล้ว" : "บันทึกรายการแล้ว");
+      setMessage(action.kind === "upload-image" ? "บันทึกภาพแล้ว" : action.kind === "delete-image" ? "ลบภาพแล้ว" : "บันทึกรายการแล้ว");
     } catch (cause) {
       setError(cause instanceof TypeError ? "เชื่อมต่อไม่สำเร็จ กรุณาตรวจสอบรายการก่อนลองอีกครั้ง" :
         cause instanceof Error ? cause.message : "ไม่สามารถทำรายการได้");
@@ -71,12 +87,16 @@ function ChartDialog({ api, item, canManage, version, onClose, onChanged }: {
   function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    void change("save", item ? "PUT" : "POST", "", { name: data.get("name"), note: data.get("note") });
+    const fields = {
+      name: String(data.get("name") ?? "").trim(),
+      note: String(data.get("note") ?? "").trim() || null,
+    };
+    void change({ kind: "save", fields }, item ? "PUT" : "POST");
   }
 
   function remove() {
     if (item && window.confirm(`ลบรายการ “${item.name}” และภาพตัวอย่างของรายการนี้หรือไม่?`)) {
-      void change("delete", "DELETE");
+      void change({ kind: "delete" }, "DELETE");
     }
   }
 
@@ -92,6 +112,12 @@ function ChartDialog({ api, item, canManage, version, onClose, onChanged }: {
       <div className="modal-body">
         {error && <p className="error-banner" role="alert">{error}</p>}
         {message && <p className="chart-status" role="status">{message}</p>}
+        {refreshError && item && (
+          <div className="error-banner" role="alert">
+            {refreshError}
+            <button type="button" className="quiet" disabled={busy} onClick={onRetryRefresh}>ลองใหม่</button>
+          </div>
+        )}
         {editing && canManage ? (
           <form onSubmit={save}>
             <label className="field">
@@ -128,13 +154,13 @@ function ChartDialog({ api, item, canManage, version, onClose, onChanged }: {
                   <input ref={fileInput} type="file" hidden accept="image/jpeg,image/png,image/webp" onChange={(event) => {
                     const file = event.currentTarget.files?.[0];
                     event.currentTarget.value = "";
-                    if (file) void change("upload-image", "PUT", "/image", file);
+                    if (file) void change({ kind: "upload-image" }, "PUT", "/image", file);
                   }} />
                   <button type="button" className="button secondary" disabled={busy} onClick={() => fileInput.current?.click()}>
                     {item.has_image ? "เปลี่ยนภาพ" : "เพิ่มภาพ"}
                   </button>
                   {item.has_image && (
-                    <button type="button" className="button secondary danger" disabled={busy} onClick={() => void change("delete-image", "DELETE", "/image")}>
+                    <button type="button" className="button secondary danger" disabled={busy} onClick={() => void change({ kind: "delete-image" }, "DELETE", "/image")}>
                       ลบภาพ
                     </button>
                   )}
@@ -192,20 +218,31 @@ export default function ColorChartPanel({ api, user }: { api: Api; user: Session
 
   const visibleItems = filterColorChart(items, query);
   const selectedItem = items.find((item) => item.id === selection);
+  const savedItemAwaitingRefresh = typeof selection === "number" && !selectedItem;
+
+  async function retryRefresh() {
+    const updated = await refresh();
+    if (savedItemAwaitingRefresh && updated && !updated.some((item) => item.id === selection)) {
+      setSelection((current) => current === selection ? null : current);
+    }
+  }
 
   async function onChanged(id: number, change: Change) {
-    if (change === "save" && selection === "new") {
-      const updated = await refresh();
-      setSelection(updated?.some((item) => item.id === id) ? id : null);
-      return;
+    if (change.kind === "save") {
+      if (selection === "new") {
+        const updated = await refresh();
+        setSelection(!updated || updated.some((item) => item.id === id) ? id : null);
+        return;
+      }
+      setItems((current) => current.map((item) => item.id === id ? { ...item, ...change.fields } : item));
     }
-    if (change === "delete") {
+    if (change.kind === "delete") {
       setSelection(null);
       setItems((current) => current.filter((item) => item.id !== id));
     }
-    if (change === "upload-image" || change === "delete-image") {
+    if (change.kind === "upload-image" || change.kind === "delete-image") {
       setImageVersions((current) => ({ ...current, [id]: (current[id] ?? 0) + 1 }));
-      setItems((current) => current.map((item) => item.id === id ? { ...item, has_image: change === "upload-image" } : item));
+      setItems((current) => current.map((item) => item.id === id ? { ...item, has_image: change.kind === "upload-image" } : item));
     }
     await refresh();
   }
@@ -218,12 +255,12 @@ export default function ColorChartPanel({ api, user }: { api: Api; user: Session
           <input type="search" aria-label="ค้นหาชื่อสีกระเบื้อง" placeholder="ค้นหาชื่อสีกระเบื้อง…" value={query}
             onChange={(event) => setQuery(event.target.value)} />
         </label>
-        {canManage && <button type="button" className="button primary" onClick={() => setSelection("new")}>เพิ่มรายการ</button>}
+        {canManage && <button type="button" className="button primary" disabled={savedItemAwaitingRefresh} onClick={() => setSelection("new")}>เพิ่มรายการ</button>}
       </div>
       {error && (
         <div className="error-banner chart-load-error" role="alert">
-          {error}
-          <button type="button" className="quiet" onClick={() => void refresh()}>ลองใหม่</button>
+          {savedItemAwaitingRefresh ? "บันทึกรายการแล้ว แต่โหลดรายการใหม่ไม่สำเร็จ" : error}
+          <button type="button" className="quiet" onClick={() => void retryRefresh()}>ลองใหม่</button>
         </div>
       )}
       {loading && <p className="result-summary" role="status">กำลังโหลดชาร์ตสี…</p>}
@@ -248,7 +285,8 @@ export default function ColorChartPanel({ api, user }: { api: Api; user: Session
       )}
       {(selectedItem || (selection === "new" && canManage)) && (
         <ChartDialog key={selection} api={api} item={selectedItem} version={selectedItem ? imageVersions[selectedItem.id] ?? 0 : 0}
-          canManage={canManage} onClose={() => setSelection(null)} onChanged={onChanged} />
+          canManage={canManage} refreshError={error} onRetryRefresh={() => void retryRefresh()}
+          onClose={() => setSelection(null)} onChanged={onChanged} />
       )}
     </section>
   );

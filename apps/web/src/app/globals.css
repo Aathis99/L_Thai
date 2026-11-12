@@ -951,6 +951,10 @@
   .chart-preview.chart-placeholder {
     min-height: 96px;
   }
+  .chart-image-retry {
+    min-height: 42px;
+    text-decoration: underline;
+  }
   .chart-entry {
     display: block;
     min-height: 42px;
