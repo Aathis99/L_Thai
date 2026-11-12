@@ -73,7 +73,7 @@ export default function Production({ data, actions }: { data: PressingData; acti
       ) : <p>ยังไม่มีรายการปั๊ม</p>}
       {editor?.kind === "record" && canRecord && (
         <FormDialog {...dialog} title="บันทึกยอดปั๊ม" path="/entries" keyField="request_id" submitLabel="ยืนยันยอดปั๊ม"
-          build={pressingEntryPayload}
+          build={(form, key) => pressingEntryPayload(form, key, data)}
         >
           <Choice label="ใบสั่งผลิต" name="order_id"
             options={activeOrders.map((order) => ({
@@ -84,7 +84,7 @@ export default function Production({ data, actions }: { data: PressingData; acti
       )}
       {editor?.kind === "edit" && canCorrect && (
         <FormDialog {...dialog} title="แก้รายการปั๊ม" path={`/entries/${editor.entry.id}`} method="PUT" submitLabel="บันทึกการแก้รายการ"
-          build={entryFormValues}
+          build={(form) => entryFormValues(form, editor.entry.pieces_per_rack)}
         >
           <p className="helper">ใช้กับรายการที่ยังไม่เคยเบิกหรือปล่อยส่วนเกิน</p>
           <EntryFields data={data} entry={editor.entry} />

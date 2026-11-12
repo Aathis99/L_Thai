@@ -207,6 +207,8 @@ export function formText(form: FormData, field: string): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+const maxPressingInteger = 2147483647;
+
 export function formInteger(
   form: FormData,
   field: string,
@@ -217,27 +219,37 @@ export function formInteger(
   const text = formText(form, field);
   if (text === "" && blankIsZero) return 0;
   const value = Number(text);
-  if (!/^\d+$/.test(text) || value < minimum || value > 2147483647) {
+  if (!/^\d+$/.test(text) || value < minimum || value > maxPressingInteger) {
     throw new Error(`กรุณาระบุ${label}เป็นจำนวนเต็มที่ถูกต้อง`);
   }
   return value;
 }
 
-export function entryFormValues(form: FormData) {
+export function entryFormValues(form: FormData, piecesPerRack: number) {
+  const fullRacks = formInteger(form, "full_racks", "จำนวนไม้เต็ม", 0);
+  const loosePieces = formInteger(form, "loose_pieces", "จำนวนแผ่นเศษ", 0, true);
+  const pieces = fullRacks * piecesPerRack + loosePieces;
+  if (pieces < 1 || pieces > maxPressingInteger) {
+    throw new Error("ยอดปั๊มรวมต้องอยู่ระหว่าง 1 ถึง 2,147,483,647 แผ่น");
+  }
   return {
     pressed_on: formText(form, "pressed_on"),
     employee_id: formInteger(form, "employee_id", "ผู้ปั๊ม"),
-    full_racks: formInteger(form, "full_racks", "จำนวนไม้เต็ม", 0),
-    loose_pieces: formInteger(form, "loose_pieces", "จำนวนแผ่นเศษ", 0, true),
+    full_racks: fullRacks,
+    loose_pieces: loosePieces,
     note: formText(form, "note") || null,
   };
 }
 
-export function pressingEntryPayload(form: FormData, requestId: string) {
+export function pressingEntryPayload(form: FormData, requestId: string, data: Pick<PressingData, "orders" | "types">) {
+  const orderId = formInteger(form, "order_id", "ใบสั่งผลิต");
+  const order = data.orders.find((item) => item.id === orderId);
+  const tile = data.types.find((item) => item.id === order?.type_id);
+  if (!tile) throw new Error("ไม่พบประเภทกระเบื้องของใบสั่งผลิตที่เลือก");
   return {
     request_id: requestId,
-    order_id: formInteger(form, "order_id", "ใบสั่งผลิต"),
-    ...entryFormValues(form),
+    order_id: orderId,
+    ...entryFormValues(form, tile.pieces_per_rack),
   };
 }
 

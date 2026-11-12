@@ -95,8 +95,8 @@ export function Check({
 }
 
 function Modal({
-  title, onClose, busy, children,
-}: { title: string; onClose: () => void; busy?: boolean; children: ReactNode }) {
+  title, onClose, busy, guardDismissal, children,
+}: { title: string; onClose: () => void; busy?: boolean; guardDismissal?: boolean; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
   useEffect(() => {
@@ -109,6 +109,12 @@ function Modal({
       ref={ref}
       className="pressing-dialog"
       aria-labelledby={id}
+      closedby={guardDismissal ? "none" : undefined}
+      onKeyDown={(event) => {
+        if (!guardDismissal || event.key !== "Escape") return;
+        event.preventDefault();
+        if (!busy && !event.repeat) onClose();
+      }}
       onCancel={(event) => {
         event.preventDefault();
         if (!busy) onClose();
@@ -145,6 +151,25 @@ export function FormDialog({
   const [busy, setBusy] = useState(false);
   const [uncertain, setUncertain] = useState(false);
   const [error, setError] = useState("");
+  const guardNavigation = Boolean(keyField && (busy || pending));
+
+  useEffect(() => {
+    if (!guardNavigation) return;
+    function warnBeforeLeaving(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = true;
+    }
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [guardNavigation]);
+
+  function dismiss() {
+    if (inFlight.current) return;
+    if (pending && !window.confirm(
+      "ยังไม่ทราบผลการบันทึก หากปิดหน้าต่างนี้จะส่งคำขอเดิมซ้ำไม่ได้ กรุณาโหลดรายการใหม่และตรวจสอบก่อนบันทึกใหม่ ต้องการปิดหรือไม่?",
+    )) return;
+    onClose();
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -186,15 +211,15 @@ export function FormDialog({
   }
 
   return (
-    <Modal title={title} onClose={onClose} busy={busy}>
+    <Modal title={title} onClose={dismiss} busy={busy} guardDismissal={guardNavigation}>
       <form onSubmit={(event) => void submit(event)}>
         <div className="modal-body">
           {error && <p className="error-banner" role="alert">{error}</p>}
           <fieldset className="pressing-fieldset" disabled={busy || uncertain}>{children}</fieldset>
         </div>
         <div className="modal-foot">
-          <button type="button" className="button secondary" disabled={busy} onClick={onClose}>
-            {uncertain ? "ปิด" : "ยกเลิก"}
+          <button type="button" className="button secondary" disabled={busy} onClick={dismiss}>
+            {pending ? "ปิดเพื่อตรวจสอบรายการ" : uncertain ? "ปิด" : "ยกเลิก"}
           </button>
           <button type="submit" className="button primary" disabled={busy || (uncertain && !pending)}>
             {busy ? "กำลังบันทึก…" : pending ? "ลองส่งอีกครั้ง" : submitLabel}
