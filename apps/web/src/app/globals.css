@@ -735,3 +735,173 @@
     }
   }
 }
+
+@layer components {
+  .nav-has-pressing + .sidebar-foot {
+    margin-top: auto;
+  }
+  .pressing-panel {
+    padding-bottom: 24px;
+  }
+  .pressing-navigation,
+  .pressing-navigation nav,
+  .pressing-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .pressing-navigation {
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  .pressing-status {
+    margin: 12px 0;
+    color: var(--color-factory-green);
+  }
+  .pressing-status:empty {
+    margin: 0 0 16px;
+  }
+  .pressing-stack,
+  .pressing-cards,
+  .pressing-comparison {
+    display: grid;
+    gap: 14px;
+  }
+  .pressing-cards {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+    align-items: start;
+  }
+  .pressing-toolbar h2,
+  .pressing-card h3 {
+    margin: 0;
+  }
+  .pressing-section-body {
+    padding: 16px 20px 20px;
+  }
+  .pressing-section-body > p:last-child,
+  .pressing-card > p:last-child {
+    margin-bottom: 0;
+  }
+  .pressing-filter {
+    max-width: 420px;
+  }
+  .pressing-card {
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid var(--color-factory-line);
+    border-radius: 8px;
+    background: #fcfdfa;
+    overflow-wrap: anywhere;
+  }
+  .pressing-card-head,
+  .pressing-line-head {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .pressing-card h3 {
+    font-size: 15px;
+  }
+  .pressing-card-head > span,
+  .pressing-meta {
+    font-size: 12px;
+    color: #586c61;
+  }
+  .pressing-facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 122px), 1fr));
+    gap: 8px 12px;
+    margin: 10px 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .pressing-facts dt {
+    color: #586c61;
+    font-size: 12px;
+  }
+  .pressing-facts dd {
+    margin: 1px 0 0;
+    font-weight: 600;
+  }
+  .pressing-card .pressing-actions {
+    margin-top: 12px;
+  }
+  .pressing-actions .button {
+    font-size: 12px;
+    padding-inline: 11px;
+  }
+  .pressing-actions .danger {
+    color: #9c4b3a;
+  }
+  .pressing-results {
+    margin: 12px 0 4px;
+  }
+  .pressing-results .pressing-card {
+    background: white;
+  }
+  .pressing-comparison {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+    border-top: 1px solid var(--color-factory-line);
+    padding-top: 10px;
+  }
+  .pressing-line-list {
+    margin-top: 8px;
+    padding-inline-start: 18px;
+    list-style: disc;
+  }
+  .pressing-dialog {
+    width: min(700px, calc(100% - 32px));
+  }
+  .pressing-dialog[open],
+  .pressing-dialog form {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .pressing-dialog .modal-head,
+  .pressing-dialog .modal-foot {
+    flex-shrink: 0;
+  }
+  .pressing-dialog .field,
+  .pressing-fieldset {
+    min-width: 0;
+  }
+  .pressing-dialog .helper {
+    color: #586c61;
+    margin: 0 0 12px;
+  }
+  .pressing-dialog .check-line input {
+    flex-shrink: 0;
+  }
+  .pressing-line {
+    min-width: 0;
+    margin-bottom: 12px;
+    padding: 10px 12px 0;
+    border: 1px solid var(--color-factory-line);
+    border-radius: 7px;
+  }
+  .pressing-line legend {
+    padding: 0 5px;
+    font-weight: 600;
+  }
+
+  @media (max-width: 760px) {
+    .sidebar .nav-has-pressing {
+      flex-wrap: wrap;
+    }
+    .pressing-navigation nav {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .pressing-navigation .button {
+      padding-inline: 8px;
+      font-size: 12px;
+    }
+    .pressing-section-body {
+      padding: 12px;
+    }
+  }
+}
