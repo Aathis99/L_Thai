@@ -737,7 +737,7 @@
 }
 
 @layer components {
-  .nav-has-pressing + .sidebar-foot {
+  .nav-has-factory + .sidebar-foot {
     margin-top: auto;
   }
   .pressing-panel {
@@ -888,7 +888,7 @@
   }
 
   @media (max-width: 760px) {
-    .sidebar .nav-has-pressing {
+    .sidebar .nav-has-factory {
       flex-wrap: wrap;
     }
     .pressing-navigation nav {
@@ -902,6 +902,112 @@
     }
     .pressing-section-body {
       padding: 12px;
+    }
+  }
+}
+
+@layer components {
+  .chart-panel {
+    margin-bottom: 24px;
+  }
+  .chart-toolbar .search {
+    flex: 1 1 170px;
+  }
+  .chart-table {
+    table-layout: fixed;
+  }
+  .chart-table th:first-child {
+    width: 78px;
+  }
+  .chart-table th:nth-child(2) {
+    width: 118px;
+  }
+  .chart-thumbnail,
+  .chart-preview {
+    display: block;
+    background: #f6f7f4;
+    border: 1px solid var(--color-factory-line);
+    border-radius: 6px;
+    object-fit: contain;
+  }
+  .chart-thumbnail {
+    width: 72px;
+    max-width: 100%;
+    aspect-ratio: 4 / 3;
+  }
+  .chart-preview {
+    width: 100%;
+    max-height: 300px;
+  }
+  .chart-placeholder {
+    display: grid;
+    place-items: center;
+    text-align: center;
+    color: #586c61;
+  }
+  .chart-thumbnail.chart-placeholder {
+    font-size: 10px;
+  }
+  .chart-preview.chart-placeholder {
+    min-height: 96px;
+  }
+  .chart-entry {
+    display: block;
+    min-height: 42px;
+    text-align: left;
+    color: var(--color-factory-green);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  .chart-entry:hover {
+    text-decoration: underline;
+  }
+  .chart-load-error {
+    margin-inline: 14px;
+  }
+  .chart-dialog[open] {
+    display: flex;
+    flex-direction: column;
+  }
+  .chart-dialog h3,
+  .chart-note {
+    overflow-wrap: anywhere;
+  }
+  .chart-dialog .modal-foot,
+  .chart-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .chart-actions,
+  .chart-note {
+    margin-top: 14px;
+  }
+  .chart-note p {
+    white-space: pre-wrap;
+    margin-bottom: 0;
+  }
+  .chart-dialog textarea {
+    @apply border border-[#dce3db] rounded-[6px] bg-white text-[#2b4337] w-full px-[12px] py-[11px];
+    resize: vertical;
+  }
+  .chart-dialog .danger {
+    color: #9d4b38;
+  }
+  .chart-status {
+    color: #586c61;
+    margin-block: 8px;
+    font-size: 12px;
+  }
+  @media (max-width: 500px) {
+    .chart-table th:first-child {
+      width: 48px;
+    }
+    .chart-table th:nth-child(2) {
+      width: 72px;
+    }
+    .chart-table :is(th, td) {
+      padding: 8px;
     }
   }
 }

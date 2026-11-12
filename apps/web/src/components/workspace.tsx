@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Auth from "./auth";
+import ColorChartPanel from "./color-chart/panel";
 import Dialog, { type DialogState } from "./dialog";
 import { Brand } from "./fields";
 import PressingPanel from "./pressing/panel";
 import RecordTable from "./record-table";
+import { canOpenColorChart } from "../lib/color-chart";
 import { canOpenPressing } from "../lib/pressing";
 import {
   allowed,
@@ -20,17 +22,18 @@ import {
   type View,
 } from "../lib/types";
 
-type WorkspaceView = View | "pressing";
-const workspaceViews: WorkspaceView[] = [...views, "pressing"];
+type WorkspaceView = View | "pressing" | "color-chart";
+const workspaceViews: WorkspaceView[] = [...views, "pressing", "color-chart"];
 
 function canOpenView(user: SessionUser, view: WorkspaceView) {
-  return view === "pressing"
-    ? canOpenPressing(user.permissions)
-    : allowed(user, view);
+  if (view === "pressing") return canOpenPressing(user.permissions);
+  if (view === "color-chart") return canOpenColorChart(user.permissions);
+  return allowed(user, view);
 }
 
 function workspaceLabel(view: WorkspaceView | null) {
   if (view === "pressing") return "งานปั๊ม";
+  if (view === "color-chart") return "ชาร์ตสี";
   return view ? labels[view] : "พื้นที่ทำงาน";
 }
 
@@ -69,12 +72,13 @@ export default function Workspace() {
 
   const api: Api = useCallback(
     async <T,>(path: string, method = "GET", data?: unknown): Promise<T> => {
+      const file = data instanceof File ? data : undefined;
       const response = await fetch(`/api${path}`, {
         method,
         credentials: "same-origin",
         cache: "no-store",
-        headers: { "Content-Type": "application/json" },
-        body: data === undefined ? undefined : JSON.stringify(data),
+        headers: { "Content-Type": file ? file.type || "application/octet-stream" : "application/json" },
+        body: file ?? (data === undefined ? undefined : JSON.stringify(data)),
       });
       const body = await response
         .json()
@@ -250,11 +254,14 @@ export default function Workspace() {
     );
   const can = (permission: string) => user.permissions.includes(permission);
   const showPressing = canOpenPressing(user.permissions);
+  const showColorChart = canOpenColorChart(user.permissions);
+  const showFactoryNav = showPressing || showColorChart;
+  const recordView = view === "pressing" || view === "color-chart" ? null : view;
   const current = records.employees.filter((employee) => !employee.archived);
   const active = current.filter((employee) => employee.active);
   const create = () => {
-    if (view && view !== "audit" && view !== "pressing")
-      setDialog({ kind: "editor", view });
+    if (recordView && recordView !== "audit")
+      setDialog({ kind: "editor", view: recordView });
   };
   return (
     <>
@@ -272,11 +279,11 @@ export default function Workspace() {
             <span className="live-dot" />
           </div>
           <div className="nav-title">
-            {showPressing ? "เมนูโรงงาน" : "บุคลากรและการเข้าถึง"}
+            {showFactoryNav ? "เมนูโรงงาน" : "บุคลากรและการเข้าถึง"}
           </div>
           <nav
             aria-label="เมนูหลัก"
-            className={showPressing ? "nav-has-pressing" : undefined}
+            className={showFactoryNav ? "nav-has-factory" : undefined}
           >
             {workspaceViews
               .filter((candidate) => canOpenView(user, candidate))
@@ -289,14 +296,14 @@ export default function Workspace() {
                   aria-label={candidate === "pressing" ? "งานปั๊ม" : undefined}
                 >
                   <span aria-hidden="true">
-                    {candidate === "pressing" ? "▧" : symbols[candidate]}
+                    {candidate === "pressing" ? "▧" : candidate === "color-chart" ? "◈" : symbols[candidate]}
                   </span>
                   {workspaceLabel(candidate)}
                   {candidate === "employees" && <small>{current.length}</small>}
                 </button>
               ))}
           </nav>
-          {!showPressing && (
+          {!showFactoryNav && (
             <div className="roadmap">
               <span>พัฒนาทีละส่วน</span>
               <strong>เริ่มจากคน พร้อมต่อยอดงาน</strong>
@@ -357,25 +364,26 @@ export default function Workspace() {
           <main className="main">
             <div className="page-head">
               <div>
-                {view !== "pressing" && <p className="eyebrow">PEOPLE &amp; ACCESS</p>}
+                {(recordView || !view) && <p className="eyebrow">PEOPLE &amp; ACCESS</p>}
                 <h1>{workspaceLabel(view)}</h1>
                 <p>
                   {view === "pressing"
                     ? "ใบสั่งผลิต ยอดปั๊ม สต็อก และผลคัดหลังเผา"
-                    : view
-                      ? subtitles[view]
-                      : "บัญชีนี้ยังไม่ได้รับสิทธิ์เข้าถึงเมนู กรุณาติดต่อผู้ดูแลระบบ"}
+                    : view === "color-chart"
+                      ? "ทะเบียนชื่อสีกระเบื้อง ภาพตัวอย่าง และหมายเหตุ"
+                      : view
+                        ? subtitles[view]
+                        : "บัญชีนี้ยังไม่ได้รับสิทธิ์เข้าถึงเมนู กรุณาติดต่อผู้ดูแลระบบ"}
                 </p>
               </div>
-              {view &&
-                view !== "audit" &&
-                view !== "pressing" &&
-                (view === "employees"
+              {recordView &&
+                recordView !== "audit" &&
+                (recordView === "employees"
                   ? can("employees.create")
-                  : can(`${view}.manage`)) && (
+                  : can(`${recordView}.manage`)) && (
                   <button className="button primary" onClick={create}>
                     <span aria-hidden="true">＋</span> เพิ่ม
-                    {view === "roles" ? "บทบาท" : labels[view]}
+                    {recordView === "roles" ? "บทบาท" : labels[recordView]}
                   </button>
                 )}
             </div>
@@ -456,23 +464,26 @@ export default function Workspace() {
             {view === "pressing" && showPressing && (
               <PressingPanel api={api} user={user} />
             )}
-            {view && view !== "pressing" && (
+            {view === "color-chart" && showColorChart && (
+              <ColorChartPanel api={api} user={user} />
+            )}
+            {recordView && (
               <section className="panel">
                 <div className="panel-toolbar">
                   <div>
-                    <h2>รายการ{labels[view]}</h2>
+                    <h2>รายการ{labels[recordView]}</h2>
                   </div>
                   <div className="toolbar-controls">
                     <label className="search">
                       <span aria-hidden="true">⌕</span>
                       <input
-                        aria-label={`ค้นหา${labels[view]}`}
-                        placeholder={`ค้นหา${view === "employees" ? "ชื่อ รหัส หรือแผนก" : labels[view]}…`}
+                        aria-label={`ค้นหา${labels[recordView]}`}
+                        placeholder={`ค้นหา${recordView === "employees" ? "ชื่อ รหัส หรือแผนก" : labels[recordView]}…`}
                         value={query}
                         onChange={(event) => setQuery(event.target.value)}
                       />
                     </label>
-                    {view === "employees" && (
+                    {recordView === "employees" && (
                       <select
                         id="filter"
                         aria-label="กรองสถานะ"
@@ -489,7 +500,7 @@ export default function Workspace() {
                   </div>
                 </div>
                 <RecordTable
-                  view={view}
+                  view={recordView}
                   records={records}
                   user={user}
                   permissions={permissions}
@@ -497,25 +508,25 @@ export default function Workspace() {
                   filter={filter}
                   onCreate={create}
                   onEdit={(item) => {
-                    if (view !== "audit")
-                      setDialog({ kind: "editor", view, item });
+                    if (recordView !== "audit")
+                      setDialog({ kind: "editor", view: recordView, item });
                   }}
                   onDelete={(item) => {
-                    if (view !== "audit")
-                      setDialog({ kind: "delete", view, item });
+                    if (recordView !== "audit")
+                      setDialog({ kind: "delete", view: recordView, item });
                   }}
                 />
                 <div className="panel-foot">
                   <span>ข้อมูลภายในโรงงาน · แสดงตามสิทธิ์ของคุณ</span>
                   <span>
-                    {view === "audit"
+                    {recordView === "audit"
                       ? "ประวัติล่าสุด 300 รายการ"
                       : "บันทึกการเปลี่ยนแปลงทุกครั้ง"}
                   </span>
                 </div>
               </section>
             )}
-            {view !== "pressing" && (
+            {(recordView || !view) && (
               <footer className="page-foot">
                 <span>LThai Factory · พื้นฐานที่ดี เริ่มจากข้อมูลที่ชัดเจน</span>
                 <span>PEOPLE &amp; ACCESS · PHASE 01</span>
