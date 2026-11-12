@@ -200,7 +200,12 @@ export default function ColorChartPanel({ api, user }: { api: Api; user: Session
     setError("");
     try {
       const result = await api<{ items: ColorChartItem[] }>(chartPath);
-      if (latest.current === version) setItems(result.items);
+      if (latest.current === version) {
+        setItems(result.items);
+        setSelection((current) => typeof current === "number" && !result.items.some((item) => item.id === current)
+          ? null
+          : current);
+      }
       return result.items;
     } catch (cause) {
       if (latest.current === version) setError(cause instanceof TypeError ? "เชื่อมต่อเพื่อโหลดชาร์ตสีไม่สำเร็จ" :
@@ -219,13 +224,6 @@ export default function ColorChartPanel({ api, user }: { api: Api; user: Session
   const visibleItems = filterColorChart(items, query);
   const selectedItem = items.find((item) => item.id === selection);
   const savedItemAwaitingRefresh = typeof selection === "number" && !selectedItem;
-
-  async function retryRefresh() {
-    const updated = await refresh();
-    if (savedItemAwaitingRefresh && updated && !updated.some((item) => item.id === selection)) {
-      setSelection((current) => current === selection ? null : current);
-    }
-  }
 
   async function onChanged(id: number, change: Change) {
     if (change.kind === "save") {
@@ -260,7 +258,7 @@ export default function ColorChartPanel({ api, user }: { api: Api; user: Session
       {error && (
         <div className="error-banner chart-load-error" role="alert">
           {savedItemAwaitingRefresh ? "บันทึกรายการแล้ว แต่โหลดรายการใหม่ไม่สำเร็จ" : error}
-          <button type="button" className="quiet" onClick={() => void retryRefresh()}>ลองใหม่</button>
+          <button type="button" className="quiet" onClick={() => void refresh()}>ลองใหม่</button>
         </div>
       )}
       {loading && <p className="result-summary" role="status">กำลังโหลดชาร์ตสี…</p>}
@@ -285,7 +283,7 @@ export default function ColorChartPanel({ api, user }: { api: Api; user: Session
       )}
       {(selectedItem || (selection === "new" && canManage)) && (
         <ChartDialog key={selection} api={api} item={selectedItem} version={selectedItem ? imageVersions[selectedItem.id] ?? 0 : 0}
-          canManage={canManage} refreshError={error} onRetryRefresh={() => void retryRefresh()}
+          canManage={canManage} refreshError={error} onRetryRefresh={() => void refresh()}
           onClose={() => setSelection(null)} onChanged={onChanged} />
       )}
     </section>
