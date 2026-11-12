@@ -14,6 +14,7 @@ import {
   audit as log,
   type Db,
 } from "./database.js";
+import { handleColorChartRoute } from "./color-chart/routes.js";
 import { handlePressingRoute } from "./pressing/routes.js";
 import {
   ApiError,
@@ -31,6 +32,14 @@ type Options = {
   secureCookies?: boolean;
   internalHosts?: string[];
 };
+export interface SessionRouteAccess {
+  db: Db;
+  require(permission: string): void;
+  mutate<T>(
+    permission: string,
+    run: (db: Db, actor: { id: number; username: string; permissions: string[] }) => Promise<T>,
+  ): Promise<T>;
+}
 const permissions = (row: any): string[] => JSON.parse(row.permissions);
 const flag = (value: unknown) =>
   typeof value === "boolean"
@@ -215,23 +224,28 @@ export function createApplication(pool: pg.Pool, options: Options = {}) {
       if (!granted.includes(permission))
         fail("คุณไม่มีสิทธิ์ทำรายการนี้", 403);
     };
+    const routeAccess = (readPermission: string): SessionRouteAccess => ({
+      db: pool,
+      require: requirePermission,
+      async mutate(permission, run) {
+        requirePermission(readPermission);
+        requirePermission(permission);
+        return transaction(pool, async (db) => {
+          const currentActor = await actor(db, token);
+          if (!currentActor) fail("กรุณาเข้าสู่ระบบใหม่", 401);
+          requirePermission(readPermission, currentActor.permissions);
+          requirePermission(permission, currentActor.permissions);
+          return run(db, currentActor);
+        });
+      },
+    });
     if (
       path.startsWith("/pressing/") &&
-      (await handlePressingRoute(req, res, {
-        db: pool,
-        require: requirePermission,
-        async mutate(permission, run) {
-          requirePermission("pressing.read");
-          requirePermission(permission);
-          return transaction(pool, async (db) => {
-            const currentActor = await actor(db, token);
-            if (!currentActor) fail("กรุณาเข้าสู่ระบบใหม่", 401);
-            requirePermission("pressing.read", currentActor.permissions);
-            requirePermission(permission, currentActor.permissions);
-            return run(db, currentActor);
-          });
-        },
-      }))
+      (await handlePressingRoute(req, res, routeAccess("pressing.read")))
+    ) return;
+    if (
+      (path === "/color-chart" || path.startsWith("/color-chart/")) &&
+      (await handleColorChartRoute(req, res, routeAccess("color_chart.read")))
     ) return;
     if (path === "/me" && method === "GET")
       return void res.json({ user, permissions: PERMISSIONS });

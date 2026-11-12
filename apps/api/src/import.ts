@@ -3,7 +3,7 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { backup, DatabaseSync } from 'node:sqlite';
 import type { Pool, PoolClient } from 'pg';
-import { baselineRoles, grantAdminPressingPermissions } from './database.js';
+import { baselineRoles, grantAdminProductionPermissions } from './database.js';
 
 const SHEET = 'พนักงาน ปี2569';
 const LOCK = 20261109;
@@ -88,7 +88,7 @@ export async function importEmployees(pool: Pool, payload: EmployeeImportPayload
 }
 
 async function requireUninitialized(client: PoolClient) {
-  for (const table of ['employees', 'positions', 'users', 'sessions', 'audit', 'data_migrations', 'pressing_types', 'pressing_orders']) {
+  for (const table of ['employees', 'positions', 'users', 'sessions', 'audit', 'data_migrations', 'pressing_types', 'pressing_orders', 'color_chart_entries']) {
     if ((await client.query(`SELECT 1 FROM ${table} LIMIT 1`)).rowCount) {
       throw new Error('Legacy migration requires an uninitialized destination (empty apart from seeded roles)');
     }
@@ -149,7 +149,7 @@ export async function migrateLegacy(pool: Pool, sqlitePath: string, backupDirect
       }
       counts[table] = rows.length;
     }
-    await grantAdminPressingPermissions(client);
+    await grantAdminProductionPermissions(client);
     // ALTER SEQUENCE RESTART rolls back with the transaction; setval does not.
     for (const table of Object.keys(tables)) {
       const sequence = (await client.query(`SELECT pg_get_serial_sequence('${table}','id') AS name, COALESCE(MAX(id),0)+1 AS next FROM ${table}`)).rows[0];

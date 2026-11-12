@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { migrateColorChart } from './color-chart/schema.js';
 import { migratePressing } from './pressing/schema.js';
 
 export type Db = pg.Pool | pg.PoolClient;
@@ -11,10 +12,15 @@ const pressingPermissions = {
   'pressing.sort': 'ส่งผลคัดหลังเผา',
   'pressing.correct': 'ปรับยอดงานปั๊ม',
 };
+const colorChartPermissions = {
+  'color_chart.read': 'ดูชาร์ตสี',
+  'color_chart.manage': 'จัดการชาร์ตสี',
+};
 export const PERMISSIONS: Record<string,string> = {
   'employees.read':'ดูข้อมูลพนักงาน','employees.create':'เพิ่มพนักงาน','employees.update':'แก้ไขพนักงาน','employees.delete':'ลบพนักงาน',
   'positions.manage':'จัดการตำแหน่งงาน','users.manage':'จัดการบัญชีผู้ใช้','roles.manage':'จัดการบทบาทและสิทธิ์','audit.read':'ดูประวัติการเปลี่ยนแปลง',
   ...pressingPermissions,
+  ...colorChartPermissions,
 };
 export const baselineRoles = [
   { id: 1, name: 'ผู้ดูแลระบบ', permissions: Object.keys(PERMISSIONS) },
@@ -26,11 +32,12 @@ export async function one(db:Db,sql:string,values:unknown[]=[]){return (await al
 export function audit(db: Db, actor: string, action: string, target: string) {
   return db.query('INSERT INTO audit(actor,action,target) VALUES($1,$2,$3)', [actor, action, target]);
 }
-export async function grantAdminPressingPermissions(db: Db): Promise<void> {
+export async function grantAdminProductionPermissions(db: Db): Promise<void> {
   const admin = await one(db, 'SELECT permissions FROM roles WHERE id=1');
   if (!admin) return;
   const permissions: string[] = JSON.parse(admin.permissions);
-  const missing = Object.keys(pressingPermissions).filter(permission => !permissions.includes(permission));
+  const missing = Object.keys({ ...pressingPermissions, ...colorChartPermissions })
+    .filter(permission => !permissions.includes(permission));
   if (missing.length)
     await db.query('UPDATE roles SET permissions=$1 WHERE id=1', [JSON.stringify([...permissions, ...missing])]);
 }
@@ -60,9 +67,10 @@ export async function migrate(pool:pg.Pool){
       CREATE TABLE IF NOT EXISTS data_migrations(key TEXT PRIMARY KEY,details JSONB NOT NULL DEFAULT '{}',created_at TIMESTAMPTZ NOT NULL DEFAULT now());
     `);
     await migratePressing(db);
+    await migrateColorChart(db);
     for (const { id, name, permissions } of baselineRoles)
       await db.query('INSERT INTO roles(id,name,permissions) VALUES($1,$2,$3) ON CONFLICT(id) DO NOTHING',[id,name,JSON.stringify(permissions)]);
-    await grantAdminPressingPermissions(db);
+    await grantAdminProductionPermissions(db);
     await db.query("SELECT setval(pg_get_serial_sequence('roles','id'),GREATEST((SELECT max(id) FROM roles),1))");
   });
 }

@@ -99,7 +99,7 @@ test('legacy snapshot includes uncheckpointed WAL, preserves data and resets seq
   assert.deepEqual(result.counts, { roles: 2, positions: 1, employees: 1, users: 1, audit: 2 });
   const roles = (await pool.query('SELECT id,permissions FROM roles ORDER BY id')).rows;
   assert.deepEqual(roles.map(row => [row.id, JSON.parse(row.permissions).sort()]), [
-    [1, ['pressing.correct', 'pressing.issue', 'pressing.manage', 'pressing.read',
+    [1, ['color_chart.manage', 'color_chart.read', 'pressing.correct', 'pressing.issue', 'pressing.manage', 'pressing.read',
       'pressing.record', 'pressing.release', 'pressing.sort', 'roles.manage']],
     [7, ['employees.read']],
   ]);
@@ -125,6 +125,9 @@ test('legacy migration rejects nonempty destination and rolls back every table w
     VALUES(1,1,'แดง',750,4,'color')`);
   await assert.rejects(migrateLegacy(pool, path, join(directory, 'backups')), /uninitialized|empty/i);
   await pool.query('DELETE FROM pressing_types');
+  await pool.query(`INSERT INTO color_chart_entries(display_order,name,normalized_name) VALUES(1,'แดง','แดง')`);
+  await assert.rejects(migrateLegacy(pool, path, join(directory, 'backups')), /uninitialized|empty/i);
+  await pool.query('DELETE FROM color_chart_entries');
   const db = new DatabaseSync(path); db.exec('UPDATE users SET role_id=999'); db.close();
   await assert.rejects(migrateLegacy(pool, path, join(directory, 'backups')));
   assert.equal((await pool.query('SELECT * FROM employees')).rowCount, 0);
