@@ -78,7 +78,9 @@ export function listOrders(db: Db) {
   SELECT o.id,o.type_id,o.target_pieces,o.purpose,o.customer_reference,
     coalesce(t.pieces,0) AS pressed_pieces,
     greatest(o.target_pieces-coalesce(t.pieces,0),0) AS short_pieces,
-    greatest(coalesce(t.pieces,0)-o.target_pieces,0) AS over_pieces
+     greatest(coalesce(t.pieces,0)-o.target_pieces,0) AS over_pieces,
+     t.order_id IS NOT NULL AS has_entries,
+     EXISTS (SELECT 1 FROM pressing_issues i WHERE i.order_id=o.id) AS has_issues
   FROM pressing_orders o LEFT JOIN totals t ON t.order_id=o.id ORDER BY o.id`);
 }
 
@@ -107,6 +109,24 @@ export async function updateOrderTarget(db: Db, id: number, body: Body) {
   }
   await db.query('UPDATE pressing_orders SET target_pieces=$1 WHERE id=$2', [target, id]);
   return { previous: order.target_pieces as number, target };
+}
+
+export async function removeOrder(db: Db, id: number): Promise<string> {
+  const order = await one(db, `SELECT o.type_id,o.target_pieces,o.customer_reference,
+    t.width,t.length,t.clay,t.name
+    FROM pressing_orders o JOIN pressing_types t ON t.id=o.type_id
+    WHERE o.id=$1 FOR UPDATE OF o`, [id]);
+  if (!order) fail('ไม่พบใบสั่งผลิต', 404);
+  const { has_entries, has_issues } = await one(db, `SELECT
+    EXISTS (SELECT 1 FROM pressing_entries WHERE order_id=$1) AS has_entries,
+    EXISTS (SELECT 1 FROM pressing_issues WHERE order_id=$1) AS has_issues`, [id]);
+  if (has_entries && has_issues) fail('ลบไม่ได้ เพราะมีรายการปั๊มและรายการเบิกอ้างถึงใบนี้แล้ว', 409);
+  if (has_entries) fail('ลบไม่ได้ เพราะมีรายการปั๊มอ้างถึงใบนี้แล้ว', 409);
+  if (has_issues) fail('ลบไม่ได้ เพราะมีรายการเบิกอ้างถึงใบนี้แล้ว', 409);
+  await db.query('DELETE FROM pressing_orders WHERE id=$1', [id]);
+  const tile = `${order.width} × ${order.length} ดิน${order.clay}${order.name ? ` ${order.name}` : ''}`;
+  return [`ใบสั่งผลิต #${id}`, `ประเภท #${order.type_id} ${tile}`, `${order.target_pieces} แผ่น`,
+    ...(order.customer_reference ? [`ออเดอร์ ${order.customer_reference}`] : [])].join(' · ');
 }
 
 export function listWorkers(db: Db) {

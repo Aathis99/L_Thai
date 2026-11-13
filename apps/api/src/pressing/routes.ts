@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { fail } from '../auth.js';
 import { audit, type Db } from '../database.js';
-import { createOrder, listOrders, listTypes, listWorkers, removeType, saveType, updateOrderTarget } from './catalog.js';
+import { createOrder, listOrders, listTypes, listWorkers, removeOrder, removeType, saveType, updateOrderTarget } from './catalog.js';
 import { createKilnJob, listKilnJobs, listSortResults, recordSortResult } from './kiln.js';
 import {
   adjustEntry, confirmOpeningReady, editEntry, listEntries, listEntryAdjustments, listIssueReversals,
@@ -134,7 +134,7 @@ export async function handlePressingRoute(req: Request, res: Response, access: P
   if (resource === 'workers') return false;
   const create = method === 'POST' && rawId === undefined;
   const update = method === 'PUT' && rawId !== undefined;
-  const remove = method === 'DELETE' && resource === 'types' && rawId !== undefined;
+  const remove = method === 'DELETE' && rawId !== undefined;
   if (!create && !update && !remove) return false;
 
   const id = await access.mutate('pressing.manage', async (db, actor) => {
@@ -155,6 +155,11 @@ export async function handlePressingRoute(req: Request, res: Response, access: P
       return id;
     }
     const id = routeId(rawId);
+    if (remove) {
+      const target = await removeOrder(db, id);
+      await audit(db, actor.username, 'ลบใบสั่งผลิต', target);
+      return id;
+    }
     const { previous, target } = await updateOrderTarget(db, id, body);
     if (previous !== target)
       await audit(db, actor.username, `แก้ยอดสั่งปั๊มจาก ${previous} เป็น ${target}`, String(id));

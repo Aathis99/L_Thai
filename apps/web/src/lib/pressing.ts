@@ -24,6 +24,8 @@ export interface ProductionOrder {
   pressed_pieces: number;
   short_pieces: number;
   over_pieces: number;
+  has_entries: boolean;
+  has_issues: boolean;
 }
 
 export interface PressingWorker {

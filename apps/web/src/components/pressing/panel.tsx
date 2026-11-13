@@ -60,6 +60,7 @@ export default function PressingPanel({ api, user }: { api: Api; user: SessionUs
 
   const actions: PressingActions = {
     api,
+    refresh,
     can: (permission) => user.permissions.includes(permission),
     onSaved: async (text) => {
       setMessage(text);

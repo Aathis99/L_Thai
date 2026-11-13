@@ -7,6 +7,7 @@ import type { Api } from "../../lib/types";
 export interface PressingActions {
   api: Api;
   can: (permission: string) => boolean;
+  refresh: () => Promise<void>;
   onSaved: (message: string) => Promise<void>;
 }
 
@@ -132,7 +133,7 @@ function Modal({
 type RequestBody = Record<string, unknown>;
 
 export function FormDialog({
-  api, title, path, method = "POST", keyField, submitLabel, build, onSaved, onClose, children,
+  api, title, path, method = "POST", keyField, submitLabel, submitDisabled, build, onSaved, onClose, onStale, children,
 }: {
   api: Api;
   title: string;
@@ -140,9 +141,11 @@ export function FormDialog({
   method?: "POST" | "PUT" | "DELETE";
   keyField?: "request_id" | "source_key";
   submitLabel: string;
+  submitDisabled?: boolean;
   build?: (form: FormData, key: string) => RequestBody;
   onSaved: (message: string) => Promise<void>;
   onClose: () => void;
+  onStale?: () => Promise<void>;
   children: ReactNode;
 }) {
   const inFlight = useRef(false);
@@ -173,7 +176,7 @@ export function FormDialog({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (inFlight.current || (uncertain && !pending)) return;
+    if (submitDisabled || inFlight.current || (uncertain && !pending)) return;
     let body: RequestBody;
     try {
       if (keyField === "request_id" && !key.current) key.current = createPressingRequestKey();
@@ -202,6 +205,7 @@ export function FormDialog({
             : "ยังไม่ทราบผลการบันทึก ปิดหน้าต่างแล้วโหลดรายการใหม่เพื่อตรวจสอบ"
           : cause instanceof Error ? cause.message : "ไม่สามารถทำรายการได้",
       );
+      if (status === 404 || status === 409) await onStale?.();
       inFlight.current = false;
       setBusy(false);
       return;
@@ -221,7 +225,7 @@ export function FormDialog({
           <button type="button" className="button secondary" disabled={busy} onClick={dismiss}>
             {pending ? "ปิดเพื่อตรวจสอบรายการ" : uncertain ? "ปิด" : "ยกเลิก"}
           </button>
-          <button type="submit" className="button primary" disabled={busy || (uncertain && !pending)}>
+          <button type="submit" className={`button ${method === "DELETE" ? "destructive" : "primary"}`} disabled={submitDisabled || busy || (uncertain && !pending)}>
             {busy ? "กำลังบันทึก…" : pending ? "ลองส่งอีกครั้ง" : submitLabel}
           </button>
         </div>

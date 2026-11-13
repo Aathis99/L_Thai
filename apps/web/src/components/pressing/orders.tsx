@@ -3,13 +3,20 @@ import { count, formInteger, formText, orderName, orderPurposes, tileName, type 
 import { Field } from "../fields";
 import { Card, Choice, Facts, FormDialog, Section, type PressingActions } from "./shared";
 
-type Editor = { kind: "order" } | { kind: "target"; order: ProductionOrder };
+type Editor = { kind: "order" } | { kind: "target" | "delete"; order: ProductionOrder };
+
+function orderReferences(order: ProductionOrder) {
+  return [order.has_entries && "รายการปั๊ม", order.has_issues && "รายการเบิก"].filter(Boolean).join("และ");
+}
 
 export default function Orders({ data, actions }: { data: PressingData; actions: PressingActions }) {
   const [editor, setEditor] = useState<Editor | null>(null);
   const manage = actions.can("pressing.manage");
   const activeTypes = data.types.filter((tile) => tile.active);
   const dialog = { api: actions.api, onSaved: actions.onSaved, onClose: () => setEditor(null) };
+  const deleting = editor?.kind === "delete" && editor.order;
+  const currentOrder = deleting && data.orders.find((order) => order.id === deleting.id);
+  const displayedOrder = currentOrder || deleting;
   return (
     <>
       <Section title="ใบสั่งผลิต" action={manage && (
@@ -23,7 +30,12 @@ export default function Orders({ data, actions }: { data: PressingData; actions:
             {data.orders.map((order) => (
               <Card key={order.id} title={orderName(order)} meta={<span className="badge neutral">{orderPurposes[order.purpose]}</span>}
                 actions={manage && (
-                  <button className="button secondary" onClick={() => setEditor({ kind: "target", order })}>แก้ยอดสั่งปั๊ม</button>
+                  <>
+                    <button className="button secondary" onClick={() => setEditor({ kind: "target", order })}>แก้ยอดสั่งปั๊ม</button>
+                    {!orderReferences(order) && (
+                      <button className="button secondary danger" onClick={() => setEditor({ kind: "delete", order })}>ลบใบสั่งผลิต</button>
+                    )}
+                  </>
                 )}
               >
                 <p>{tileName(data.types, order.type_id)}</p>
@@ -33,6 +45,7 @@ export default function Orders({ data, actions }: { data: PressingData; actions:
                   "ยอดขาด (แผ่น)": count(order.short_pieces),
                   "ยอดเกิน (แผ่น)": count(order.over_pieces),
                 }} />
+                {manage && orderReferences(order) && <p className="helper">ลบไม่ได้ เพราะมี{orderReferences(order)}อ้างถึงใบนี้แล้ว</p>}
               </Card>
             ))}
           </div>
@@ -45,6 +58,16 @@ export default function Orders({ data, actions }: { data: PressingData; actions:
         >
           <p>{orderName(editor.order)}</p>
           <Field label="ยอดสั่งปั๊ม (แผ่น)" name="target_pieces" type="number" min={1} step={1} required defaultValue={editor.order.target_pieces} />
+        </FormDialog>
+      )}
+      {displayedOrder && manage && (
+        <FormDialog {...dialog} title="ลบใบสั่งผลิต" path={`/orders/${displayedOrder.id}`} method="DELETE" submitLabel="ยืนยันลบ"
+          onSaved={() => actions.onSaved("ลบใบสั่งผลิตแล้ว")} onStale={actions.refresh}
+          submitDisabled={!currentOrder || Boolean(orderReferences(currentOrder))}
+        >
+          <p>{orderName(displayedOrder)}</p>
+          <Facts values={{ "ประเภทกระเบื้อง": tileName(data.types, displayedOrder.type_id), "ยอดสั่งปั๊ม (แผ่น)": count(displayedOrder.target_pieces) }} />
+          {!currentOrder && <p className="helper">ไม่พบใบสั่งผลิตนี้ในรายการล่าสุด</p>}
         </FormDialog>
       )}
     </>

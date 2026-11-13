@@ -13,7 +13,7 @@ import {
 
 const order: ProductionOrder = {
   id: 7, type_id: 4, purpose: "stock", customer_reference: null,
-  target_pieces: 100, pressed_pieces: 0, short_pieces: 100, over_pieces: 0,
+  target_pieces: 100, pressed_pieces: 0, short_pieces: 100, over_pieces: 0, has_entries: false, has_issues: false,
 };
 const tile: TileType = {
   id: 4, width: 10, length: 10, clay: "แดง", name: null, clay_color: null,

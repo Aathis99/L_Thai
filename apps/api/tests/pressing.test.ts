@@ -151,7 +151,7 @@ test('pressing catalog, orders and worker selection use session permissions', as
     const historical = await findOrder();
     assert.deepEqual(historical, {
       ...order, id: created.body.id, target_pieces: 1200,
-      pressed_pieces: 0, short_pieces: 1200, over_pieces: 0,
+      pressed_pieces: 0, short_pieces: 1200, over_pieces: 0, has_entries: false, has_issues: false,
     });
     const types = await press('/types');
     assert.equal(types.body.items.find((row: { id: number }) => row.id === type.body.id).active, false);
@@ -178,6 +178,61 @@ test('pressing catalog, orders and worker selection use session permissions', as
   const entryInput = (orderId: number, full_racks: number) => ({
     request_id: randomUUID(), order_id: orderId, pressed_on: '2099-01-29',
     employee_id: worker.body.id, full_racks,
+  });
+
+  await t.test('deletion requires manage permission and audits only unused orders', async () => {
+    const before = (await press('/stock')).body;
+    for (const purpose of ['customer', 'stock'] as const) {
+      const { orderId, typeId } = await makeOrder(purpose, 100);
+      const path = '/orders/' + orderId;
+      assert.equal((await press(path, 'DELETE', undefined, reader)).status, 403);
+      assert.deepEqual(await press(path, 'DELETE').then(({ status, body }) => ({ status, body })),
+        { status: 200, body: { id: orderId } });
+      assert.equal((await press(path, 'DELETE')).status, 404);
+      assert.ok(!(await press('/orders')).body.items.some((row: { id: number }) => row.id === orderId));
+      const audit = (await call('/audit', 'GET', undefined, admin)).body.items;
+      const deleted = audit.filter((row: { action: string; target: string }) =>
+        row.action === 'ลบใบสั่งผลิต' && row.target.startsWith(`ใบสั่งผลิต #${orderId} ·`));
+      assert.equal(deleted.length, 1);
+      assert.equal(deleted[0].actor, 'admin');
+      assert.ok(deleted[0].target.includes(`ประเภท #${typeId}`));
+      assert.ok(deleted[0].target.includes('100 แผ่น'));
+      if (purpose === 'customer') assert.ok(deleted[0].target.includes('SALE-02'));
+    }
+    assert.deepEqual((await press('/stock')).body, before);
+  });
+
+  await t.test('pressing and issue references block deletion even after a full reversal', async () => {
+    const pressed = await makeOrder('stock', 100);
+    const pressedPath = '/orders/' + pressed.orderId;
+    assert.equal((await press('/entries', 'POST', entryInput(pressed.orderId, 1))).status, 201);
+    assert.equal((await press(pressedPath, 'DELETE')).status, 409);
+
+    const { orderId, typeId } = await makeOrder('customer', 100);
+    const opening = await press('/opening', 'POST', {
+      source_key: 'order-delete-issue', type_id: typeId, as_of: '2024-02-29', pieces: 100, ready_confirmed: true,
+    });
+    assert.equal(opening.status, 201);
+    const issue = await press('/issues', 'POST', {
+      request_id: randomUUID(), type_id: typeId, order_id: orderId, destination: 'color', confirmed_ready: true,
+      lines: [{ source_id: opening.body.id, pieces: 100, allocation: 'general' }],
+    });
+    assert.equal(issue.status, 201);
+    const before = (await press('/stock')).body;
+    assert.equal((await press('/orders/' + orderId, 'DELETE')).status, 409);
+    assert.deepEqual((await press('/stock')).body, before);
+    const orders = (await press('/orders')).body.items;
+    assert.equal(orders.find((row: { id: number }) => row.id === pressed.orderId).has_entries, true);
+    const linked = orders.find((row: { id: number }) => row.id === orderId);
+    assert.equal(linked.has_issues, true);
+    assert.equal(linked.has_entries, false);
+    assert.equal(linked.pressed_pieces, 0);
+    const listedIssue = (await press('/issues')).body.items.find((row: { id: number }) => row.id === issue.body.id);
+    const reversed = await press(`/issues/${issue.body.id}/reversals`, 'POST', {
+      request_id: randomUUID(), reason: 'ทดสอบ', lines: [{ issue_line_id: listedIssue.lines[0].id, pieces: 100 }],
+    });
+    assert.equal(reversed.status, 201);
+    assert.equal((await press('/orders/' + orderId, 'DELETE')).status, 409);
   });
 
   await t.test('receipts calculate pieces and retain the recorded rate and rest days after type edits', async () => {
