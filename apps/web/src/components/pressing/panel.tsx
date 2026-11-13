@@ -5,19 +5,21 @@ import type { PressingData } from "../../lib/pressing";
 import type { Api, SessionUser } from "../../lib/types";
 import Catalog from "./catalog";
 import Inventory from "./inventory";
+import Orders from "./orders";
 import Production from "./production";
 import Sorting from "./sorting";
 import type { PressingActions } from "./shared";
 
 const sections = [
-  { id: "catalog", label: "ทะเบียนและใบสั่ง", Component: Catalog },
+  { id: "orders", label: "ใบสั่งผลิต", Component: Orders },
+  { id: "catalog", label: "ทะเบียนประเภทกระเบื้อง", Component: Catalog },
   { id: "production", label: "บันทึกยอด", Component: Production },
   { id: "inventory", label: "สต็อกและเบิก", Component: Inventory },
   { id: "sorting", label: "ผลคัด", Component: Sorting },
 ] as const;
 
 export default function PressingPanel({ api, user }: { api: Api; user: SessionUser }) {
-  const [section, setSection] = useState<(typeof sections)[number]["id"]>("catalog");
+  const [section, setSection] = useState<(typeof sections)[number]["id"]>("orders");
   const [data, setData] = useState<PressingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
