@@ -8,7 +8,7 @@ import { test, type TestContext } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import pg from 'pg';
-import { migrate } from '../src/database.js';
+import { finishingPermissions, migrate } from '../src/database.js';
 import { importEmployees, migrateLegacy, type EmployeeImportPayload } from '../src/import.js';
 
 dotenv.config({ path: fileURLToPath(new URL('../../../.env', import.meta.url)), quiet: true });
@@ -100,7 +100,7 @@ test('legacy snapshot includes uncheckpointed WAL, preserves data and resets seq
   const roles = (await pool.query('SELECT id,permissions FROM roles ORDER BY id')).rows;
   assert.deepEqual(roles.map(row => [row.id, JSON.parse(row.permissions).sort()]), [
     [1, ['color_chart.manage', 'color_chart.read', 'pressing.correct', 'pressing.issue', 'pressing.manage', 'pressing.read',
-      'pressing.record', 'pressing.release', 'pressing.sort', 'roles.manage']],
+      'pressing.record', 'pressing.release', 'pressing.sort', 'roles.manage', ...Object.keys(finishingPermissions)].sort()],
     [7, ['employees.read']],
   ]);
   const employee = (await pool.query('SELECT * FROM employees')).rows[0];

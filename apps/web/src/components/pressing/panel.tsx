@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PressingData } from "../../lib/pressing";
 import type { Api, SessionUser } from "../../lib/types";
-import Catalog from "./catalog";
 import Inventory from "./inventory";
 import Orders from "./orders";
 import Production from "./production";
@@ -12,7 +11,6 @@ import type { PressingActions } from "./shared";
 
 const sections = [
   { id: "orders", label: "ใบสั่งผลิต", Component: Orders },
-  { id: "catalog", label: "ทะเบียนประเภทกระเบื้อง", Component: Catalog },
   { id: "production", label: "บันทึกยอด", Component: Production },
   { id: "inventory", label: "สต็อกและเบิก", Component: Inventory },
   { id: "sorting", label: "ผลคัด", Component: Sorting },
@@ -34,10 +32,10 @@ export default function PressingPanel({ api, user }: { api: Api; user: SessionUs
       return (await api<{ items: PressingData[K] }>(`/pressing/${path}`)).items;
     };
     try {
-      const [types, orders, workers, entries, stock, issues, jobs] = await Promise.all([
-        list("types"), list("orders"), list("workers"), list("entries"), list("stock"), list("issues"), list("jobs", "kiln-jobs"),
+      const [types, orders, workers, entries, stock, issues, jobs, colors] = await Promise.all([
+        list("types"), list("orders"), list("workers"), list("entries"), list("stock"), list("issues"), list("jobs", "kiln-jobs"), list("colors"),
       ]);
-      if (latest.current === version) setData({ types, orders, workers, entries, stock, issues, jobs });
+      if (latest.current === version) setData({ types, orders, workers, entries, stock, issues, jobs, colors });
     } catch (cause) {
       if (latest.current === version) {
         setError(cause instanceof TypeError ? "เชื่อมต่อเพื่อโหลดข้อมูลงานปั๊มไม่สำเร็จ" :

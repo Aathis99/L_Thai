@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { fail } from '../auth.js';
 import { all, audit, one, type Db } from '../database.js';
 import { calendarDate, integer, pressingText } from './catalog.js';
@@ -65,7 +66,9 @@ export async function recordEntry(db: Db, body: Body, actor: Recorder): Promise<
     return existing.id;
   }
 
-  const type = await one(db, `SELECT t.id,t.active,t.pieces_per_rack,t.rest_days,t.pieces_per_sqm,t.destination
+  const type = await one(db, `SELECT t.id,t.active,t.pieces_per_rack,t.rest_days,
+    CASE WHEN o.customer_pieces IS NULL THEN t.pieces_per_sqm ELSE o.pieces_per_sqm END AS pieces_per_sqm,
+    coalesce(o.production_destination,t.destination) AS destination,coalesce(o.production_clay,t.clay) AS clay
     FROM pressing_orders o JOIN pressing_types t ON t.id=o.type_id WHERE o.id=$1`, [orderId]);
   if (!type) fail('ไม่พบใบสั่งผลิตที่เลือก');
   if (!type.active) fail('ประเภทกระเบื้องที่เลือกหยุดใช้แล้ว', 409);
@@ -79,8 +82,8 @@ export async function recordEntry(db: Db, body: Body, actor: Recorder): Promise<
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
   [requestId, orderId, pressedOn, employeeId, racks, loose, note, pieces,
     type.pieces_per_rack, type.rest_days, type.pieces_per_sqm, squareMeters, actor.id]);
-  await db.query(`INSERT INTO pressing_stock_sources(type_id,entry_id,ready_on,destination)
-    VALUES($1,$2,$3,$4)`, [type.id, id, readyOn, type.destination]);
+  await db.query(`INSERT INTO pressing_stock_sources(type_id,entry_id,ready_on,destination,source_clay)
+    VALUES($1,$2,$3,$4,$5)`, [type.id, id, readyOn, type.destination,type.clay]);
   await audit(db, actor.username, 'บันทึกยอดปั๊ม', String(id));
   return id;
 }
@@ -103,12 +106,12 @@ export async function recordOpening(db: Db, body: Body, actor: Recorder): Promis
     return existing.id;
   }
 
-  const type = await one(db, 'SELECT active,destination FROM pressing_types WHERE id=$1', [typeId]);
+  const type = await one(db, 'SELECT active,destination,clay FROM pressing_types WHERE id=$1', [typeId]);
   if (!type) fail('ไม่พบประเภทกระเบื้องที่เลือก');
   if (!type.active) fail('ประเภทกระเบื้องที่เลือกหยุดใช้แล้ว', 409);
   const { id } = await one(db, `INSERT INTO pressing_stock_sources(type_id,source_key,as_of,opening_pieces,
-    ready_on,ready_confirmed,destination) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-  [typeId, sourceKey, asOf, pieces, readyOn, readyConfirmed, type.destination]);
+    ready_on,ready_confirmed,destination,source_clay) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+  [typeId, sourceKey, asOf, pieces, readyOn, readyConfirmed, type.destination,type.clay]);
   await audit(db, actor.username, 'บันทึกยอดตั้งต้นงานปั๊ม', String(id));
   return id;
 }
@@ -123,17 +126,25 @@ const stockSources = `FROM pressing_stock_sources s LEFT JOIN pressing_effective
   ) issued
   CROSS JOIN LATERAL (
     SELECT coalesce(sum(pieces),0) AS pieces FROM pressing_releases WHERE source_id=s.id
-  ) released`;
+  ) released
+  CROSS JOIN LATERAL (
+    SELECT coalesce(sum(effective_pieces),0) - coalesce(o.target_pieces,0) -
+      (SELECT coalesce(sum(r.pieces),0) FROM pressing_releases r JOIN pressing_stock_sources rs ON rs.id=r.source_id
+        JOIN pressing_entries re ON re.id=rs.entry_id WHERE re.order_id=o.id) AS surplus
+    FROM pressing_effective_entries WHERE order_id=o.id
+  ) transferable`;
 
 const stockBalances = `SELECT s.id,s.type_id,s.entry_id,e.order_id,to_char(e.pressed_on,'YYYY-MM-DD') AS pressed_on,
   to_char(s.as_of,'YYYY-MM-DD') AS as_of,to_char(s.ready_on,'YYYY-MM-DD') AS ready_on,
   coalesce(s.ready_on <= (statement_timestamp() AT TIME ZONE 'Asia/Bangkok')::date,
     s.ready_confirmed OR s.ready_confirmed_later) AS ready,
-  s.destination,(coalesce(e.effective_pieces,s.opening_pieces)-issued.general-issued.restricted)::integer AS remaining_pieces,
+  s.destination,s.source_clay,(coalesce(e.effective_pieces,s.opening_pieces)-issued.general-issued.restricted)::integer AS remaining_pieces,
   ((CASE WHEN o.purpose='customer' THEN released.pieces ELSE coalesce(e.effective_pieces,s.opening_pieces) END)
     -issued.general)::integer AS general_pieces,
   ((CASE WHEN o.purpose='customer' THEN e.effective_pieces-released.pieces ELSE 0 END)
-    -issued.restricted)::integer AS restricted_pieces
+    -issued.restricted)::integer AS restricted_pieces,
+  greatest(least(transferable.surplus,CASE WHEN o.purpose='customer'
+    THEN e.effective_pieces-released.pieces-issued.restricted ELSE 0 END),0)::integer AS transferable_pieces
   ${stockSources}`;
 
 export function listStock(db: Db) {
@@ -226,7 +237,7 @@ export async function confirmOpeningReady(db: Db, id: number, body: Body, actor:
 }
 
 export function listIssues(db: Db) {
-  return all(db, `SELECT i.id,i.type_id,i.order_id,i.destination,i.confirmed_ready,i.pooled,
+  return all(db, `SELECT i.id,i.type_id,i.order_id,i.destination,i.confirmed_ready,i.pooled,i.finishing_ready,
     i.issued_by,u.username AS issued_by_username,i.issued_at,
     jsonb_agg(jsonb_build_object('id',l.id,'source_id',l.source_id,'pieces',l.pieces,
       'allocation',l.allocation) ORDER BY l.id) AS lines
@@ -234,14 +245,14 @@ export function listIssues(db: Db) {
     GROUP BY i.id,u.username ORDER BY i.id`);
 }
 
-type IssueLine = { source_id: number; pieces: number; allocation: 'general' | 'order' };
+type IssueLine = { source_id: number; pieces: number; allocation: 'general' | 'order' | 'transfer' };
 
 function parseIssueLines(value: unknown): IssueLine[] {
   if (!Array.isArray(value) || !value.length) fail('กรุณาระบุรายการเบิกอย่างน้อยหนึ่งรายการ');
   const lines = value.map((line: unknown): IssueLine => {
     if (!line || typeof line !== 'object') fail('รายการเบิกไม่ถูกต้อง');
     const { source_id, pieces, allocation } = line as Body;
-    if (allocation !== 'general' && allocation !== 'order') fail('กรุณาเลือกส่วนสต็อกที่ต้องการเบิก');
+    if (allocation !== 'general' && allocation !== 'order' && allocation !== 'transfer') fail('กรุณาเลือกส่วนสต็อกที่ต้องการเบิก');
     return { source_id: integer(source_id, 'แหล่งสต็อก'), pieces: integer(pieces, 'จำนวนแผ่นที่เบิก'), allocation };
   });
   return lines.sort((a, b) => a.source_id - b.source_id || a.allocation.localeCompare(b.allocation) || a.pieces - b.pieces);
@@ -252,7 +263,7 @@ function auditMovement(db: Db, actor: Recorder, action: string, id: number, move
     [actor.username, action, String(id), movedAt]);
 }
 
-export async function recordIssue(db: Db, body: Body, actor: Recorder): Promise<number> {
+export async function recordIssue(db: Db, body: Body, actor: Recorder & { permissions?: string[] }): Promise<number> {
   const requestId = pressingText(body.request_id, 'รหัสคำขอ', true);
   const typeId = integer(body.type_id, 'ประเภทกระเบื้อง');
   const orderId = body.order_id == null ? null : integer(body.order_id, 'ใบสั่งผลิต');
@@ -263,6 +274,8 @@ export async function recordIssue(db: Db, body: Body, actor: Recorder): Promise<
   const pooled = body.pooled === undefined ? false : body.pooled;
   if (typeof pooled !== 'boolean') fail('กรุณาระบุว่าเบิกจากกองรวมหรือไม่');
   const lines = parseIssueLines(body.lines);
+  if (lines.some(line => line.allocation === 'transfer') && !actor.permissions?.includes('pressing.release'))
+    fail('คุณไม่มีสิทธิ์ย้ายยอดปั๊มข้ามใบ', 403);
 
   // Keep the normalized request separately from the quantities used for stock and corrections.
   const payload = JSON.stringify({ type_id: typeId, order_id: orderId, destination,
@@ -274,8 +287,11 @@ export async function recordIssue(db: Db, body: Body, actor: Recorder): Promise<
     return existing.id;
   }
   if (!confirmedReady) fail('ต้องยืนยันความพร้อมก่อนเบิก', 409);
-  if (orderId !== null && !(await one(db, 'SELECT 1 FROM pressing_orders WHERE id=$1 AND type_id=$2', [orderId, typeId])))
-    fail('ใบสั่งผลิตที่เลือกไม่ตรงกับประเภทกระเบื้องที่เบิก', 409);
+  const order = orderId === null ? null : await one(db, `SELECT production_destination,production_clay
+    FROM pressing_orders WHERE id=$1 AND type_id=$2`, [orderId, typeId]);
+  if (orderId !== null && !order) fail('ใบสั่งผลิตที่เลือกไม่ตรงกับประเภทกระเบื้องที่เบิก', 409);
+  if (order?.production_destination && destination !== order.production_destination)
+    fail('ปลายทางเบิกไม่ตรงกับเส้นทางผลิตของใบสั่ง', 409);
 
   const combined = new Map<string, IssueLine>();
   for (const line of lines) {
@@ -283,14 +299,31 @@ export async function recordIssue(db: Db, body: Body, actor: Recorder): Promise<
     const previous = combined.get(key);
     combined.set(key, { ...line, pieces: (previous?.pieces ?? 0) + line.pieces });
   }
+  const transfers: number[] = [];
+  for (const line of [...combined.values()].filter(line => line.allocation === 'transfer')) {
+    const source = await one(db, stockBalances + ' WHERE s.id=$1', [line.source_id]);
+    if (!source?.order_id || orderId === null || source.order_id === orderId)
+      fail('กรุณาเลือกใบสั่งผลิตต้นทางและปลายทางคนละใบ', 409);
+    const releaseId = await releaseSurplus(db, {
+      request_id: randomUUID(),
+      source_id: line.source_id, pieces: line.pieces,
+    }, actor);
+    transfers.push(releaseId);
+    const key = line.source_id + ':general';
+    const general = combined.get(key);
+    combined.set(key, { ...line, allocation: 'general', pieces: line.pieces + (general?.pieces ?? 0) });
+    combined.delete(line.source_id + ':transfer');
+  }
   const sourceIds = [...new Set(lines.map(line => line.source_id))];
   const sources = await all(db, stockBalances + ' WHERE s.id=ANY($1::integer[])', [sourceIds]);
   const sourcesById = new Map(sources.map(source => [source.id, source]));
+  const clay = order?.production_clay ?? sources[0]?.source_clay;
   for (const line of combined.values()) {
     const source = sourcesById.get(line.source_id);
     if (!source || source.type_id !== typeId) fail('แหล่งสต็อกไม่ตรงกับประเภทกระเบื้องที่เบิก', 409);
     if (!source.ready) fail('แหล่งสต็อกยังไม่พร้อมเบิก', 409);
     if (source.destination !== destination) fail('ปลายทางเบิกไม่ตรงกับแหล่งสต็อก', 409);
+    if (source.source_clay !== clay) fail('ประเภทดินของแหล่งสต็อกไม่ตรงกับใบเบิก', 409);
     if (line.allocation === 'order' && (orderId === null || source.order_id !== orderId))
       fail('ยอดที่ผูกใบสั่งใช้ได้เฉพาะกับใบสั่งผลิตเดิม', 409);
     const available = line.allocation === 'order' ? source.restricted_pieces : source.general_pieces;
@@ -298,13 +331,20 @@ export async function recordIssue(db: Db, body: Body, actor: Recorder): Promise<
   }
 
   const { id, issued_at } = await one(db, `INSERT INTO pressing_issues(request_id,request_payload,type_id,order_id,
-    destination,confirmed_ready,pooled,issued_by,issued_at)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,clock_timestamp()) RETURNING id,issued_at::text`,
-  [requestId, payload, typeId, orderId, destination, confirmedReady, pooled, actor.id]);
+    destination,confirmed_ready,pooled,issued_by,issued_at,finishing_ready,finishing_clay)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,clock_timestamp(),
+      EXISTS (SELECT 1 FROM pressing_orders WHERE id=$4 AND customer_pieces IS NOT NULL),
+      $9)
+    RETURNING id,issued_at::text`,
+  [requestId, payload, typeId, orderId, destination, confirmedReady, pooled, actor.id, clay]);
   await db.query(`INSERT INTO pressing_issue_lines(issue_id,source_id,pieces,allocation)
     SELECT $1,source_id,pieces,allocation FROM jsonb_to_recordset($2::jsonb)
       AS line(source_id integer,pieces integer,allocation text) ORDER BY source_id,allocation`,
   [id, JSON.stringify([...combined.values()])]);
+  if (transfers.length) {
+    await db.query('UPDATE pressing_releases SET destination_issue_id=$1 WHERE id=ANY($2::integer[])', [id, transfers]);
+    await auditMovement(db, actor, 'ย้ายยอดปั๊มส่วนเกินข้ามใบ', id, issued_at);
+  }
   await auditMovement(db, actor, 'ยืนยันเบิกสต็อกงานปั๊ม', id, issued_at);
   return id;
 }
@@ -354,6 +394,11 @@ export async function reverseIssue(db: Db, issueId: number, body: Body, actor: R
     if (pieces > previous_pieces) fail('จำนวนแผ่นที่คืนมากกว่ายอดเบิกที่ยังไม่ได้ย้อน', 409);
     return { issue_line_id: id, pieces, previous_pieces };
   });
+  const finishing = await one(db, 'SELECT net_pieces,glazed_pieces FROM finishing_issues WHERE id=$1', [issueId]);
+  const { loaded } = await one(db, `SELECT coalesce(sum(pieces),0)::double precision AS loaded
+    FROM firing_loads WHERE issue_id=$1 AND batch_id IS NULL`, [issueId]);
+  if (finishing.net_pieces - returns.reduce((sum, line) => sum + line.pieces, 0) < finishing.glazed_pieces + loaded)
+    fail('ยอดหลังคืนต่ำกว่ายอดที่บันทึกงานชุบหรือเข้าเตาแล้ว', 409);
 
   const { id, reversed_at } = await one(db, `INSERT INTO pressing_issue_reversals(issue_id,request_id,request_lines,
     reason,reversed_by,reversed_at) VALUES($1,$2,$3,$4,$5,clock_timestamp()) RETURNING id,reversed_at::text`,

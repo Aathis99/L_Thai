@@ -17,13 +17,16 @@ function sourceName(source: StockSource) {
   return `แหล่งสต็อก #${source.id} · ${source.entry_id === null ? "ยอดตั้งต้น" : `รายการปั๊ม #${source.entry_id}`}`;
 }
 
-function availability(source: StockSource, orderId: number): { value: Allocation; label: string; pieces: number }[] {
-  const options: { value: Allocation; label: string; pieces: number }[] = [];
+function availability(source: StockSource, orderId: number, canTransfer: boolean) {
+  const options: { value: Allocation | "transfer"; label: string; pieces: number }[] = [];
   if (source.general_pieces > 0) {
     options.push({ value: "general", label: allocations.general, pieces: source.general_pieces });
   }
   if (source.restricted_pieces > 0 && orderId === source.order_id) {
     options.push({ value: "order", label: allocations.order, pieces: source.restricted_pieces });
+  }
+  if (canTransfer && orderId && source.order_id && orderId !== source.order_id && source.transferable_pieces > 0) {
+    options.push({ value: "transfer", label: "ยืนยันย้ายยอดปั๊มส่วนเกิน", pieces: source.transferable_pieces });
   }
   return options;
 }
@@ -131,7 +134,7 @@ export default function Inventory({ data, actions }: { data: PressingData; actio
         ) : <p>ยังไม่มีการเบิก</p>}
       </Section>
       {editor?.kind === "opening" && canManage && <OpeningForm {...dialog} data={data} />}
-      {editor?.kind === "issue" && canIssue && <IssueForm {...dialog} data={data} readyStock={readyStock} />}
+      {editor?.kind === "issue" && canIssue && <IssueForm {...dialog} data={data} readyStock={readyStock} canTransfer={canRelease} />}
       {editor?.kind === "ready" && canIssue && (
         <FormDialog {...dialog} title="ยืนยันความพร้อมยอดตั้งต้น" path={`/stock/${editor.source.id}/ready`}
           submitLabel="ยืนยันความพร้อม" build={(form) => ({ confirmed_ready: form.has("confirmed_ready") })}
@@ -190,17 +193,22 @@ function OpeningForm({ data, ...dialog }: DialogProps & { data: PressingData }) 
 }
 
 function IssueForm({
-  data, readyStock, ...dialog
-}: DialogProps & { data: PressingData; readyStock: StockSource[] }) {
+  data, readyStock, canTransfer, ...dialog
+}: DialogProps & { data: PressingData; readyStock: StockSource[]; canTransfer: boolean }) {
   const [type, setType] = useState("");
   const [destination, setDestination] = useState("");
   const [order, setOrder] = useState("");
   const [lines, setLines] = useState([0]);
   const nextLine = useRef(1);
   const matchingType = readyStock.filter((source) => source.type_id === Number(type));
+  const destinationOrder = data.orders.find(item => item.id === Number(order));
+  const reference = destinationOrder?.customer_reference;
+  const sourcePriority = (source: StockSource) => source.order_id === Number(order) ? 0 :
+    reference && data.orders.some(item => item.id === source.order_id && item.customer_reference === reference) ? 1 : 2;
   const matchingSources = matchingType.filter((source) =>
-    source.destination === destination && availability(source, Number(order)).length > 0,
-  );
+    source.destination === destination && (!destinationOrder?.production_clay || source.source_clay === destinationOrder.production_clay) &&
+    availability(source, Number(order), canTransfer).length > 0,
+  ).sort((a, b) => sourcePriority(a) - sourcePriority(b));
   const clearLines = () => setLines([nextLine.current++]);
   return (
     <FormDialog {...dialog} title="เบิกสต็อก" path="/issues" keyField="request_id" submitLabel="ยืนยันการเบิก"
@@ -255,7 +263,7 @@ function IssueForm({
               </button>
             )}
           </div>
-          <IssueFields line={index} sources={matchingSources} orderId={Number(order)} />
+          <IssueFields line={index} sources={matchingSources} orderId={Number(order)} canTransfer={canTransfer} />
         </div>
       ))}
       <div className="pressing-actions">
@@ -269,11 +277,11 @@ function IssueForm({
   );
 }
 
-function IssueFields({ line, sources, orderId }: { line: number; sources: StockSource[]; orderId: number }) {
+function IssueFields({ line, sources, orderId, canTransfer }: { line: number; sources: StockSource[]; orderId: number; canTransfer: boolean }) {
   const [sourceId, setSourceId] = useState("");
   const [allocation, setAllocation] = useState("");
   const source = sources.find((item) => item.id === Number(sourceId));
-  const options = source ? availability(source, orderId) : [];
+  const options = source ? availability(source, orderId, canTransfer) : [];
   const maximum = options.find((option) => option.value === allocation)?.pieces;
   return (
     <div className="form-grid">
@@ -282,7 +290,7 @@ function IssueFields({ line, sources, orderId }: { line: number; sources: StockS
         setAllocation("");
       }} options={sources.map((item) => ({
         value: item.id,
-        label: `${sourceName(item)} · ${item.pressed_on ?? item.as_of ?? ""}`,
+        label: `${sourceName(item)} · ${item.order_id ? `ใบสั่ง #${item.order_id} · ` : ""}${item.pressed_on ?? item.as_of ?? ""}`,
       }))} />
       <Choice label="ส่วนสต็อกที่เบิก" name={`allocation_${line}`} value={allocation} onChange={setAllocation}
         options={options.map((option) => ({ value: option.value, label: `${option.label} · ${count(option.pieces)} แผ่น` }))} />

@@ -108,6 +108,8 @@ function ResultForm({
 }: DialogProps & { data: PressingData; job: KilnJob; result?: SortResult }) {
   const [type, setType] = useState(result ? String(result.type_id) : "");
   const today = bangkokDate();
+  const issues = data.issues.filter(issue => issue.type_id === Number(type) &&
+    (!issue.finishing_ready || result?.issue_ids.includes(issue.id)));
   const employees = new Map(data.entries.map((entry) => [entry.employee_id, entry.employee_name]));
   for (const worker of data.workers) employees.set(worker.id, `${worker.name} · ${worker.code}`);
   if (result?.employee_id && !employees.has(result.employee_id)) {
@@ -144,8 +146,8 @@ function ResultForm({
       {type && (
         <fieldset className="pressing-line" key={type}>
           <legend>ใบเบิกอ้างอิง (ถ้าทราบ)</legend>
-          {data.issues.some((issue) => issue.type_id === Number(type)) ? (
-            data.issues.filter((issue) => issue.type_id === Number(type)).map((issue) => (
+          {issues.length ? (
+            issues.map((issue) => (
               <Check key={issue.id} name="issue_ids" value={issue.id} defaultChecked={result?.issue_ids.includes(issue.id)}
                 label={`ใบเบิก #${issue.id} · ${destinations[issue.destination]} · ${timestamp(issue.issued_at)}${issue.pooled ? " · กองรวม" : ""}`} />
             ))

@@ -5,13 +5,15 @@ import { Card, Choice, Facts, FormDialog, Section, type PressingActions } from "
 
 type Editor = { kind: "type"; tile?: TileType } | { kind: "retire"; tile: TileType };
 
-export default function Catalog({ data, actions }: { data: PressingData; actions: PressingActions }) {
+export default function Catalog({ data, actions }: {
+  data: Pick<PressingData, "types">; actions: Pick<PressingActions, "can" | "api" | "onSaved">;
+}) {
   const [editor, setEditor] = useState<Editor | null>(null);
   const manage = actions.can("pressing.manage");
   const dialog = { api: actions.api, onSaved: actions.onSaved, onClose: () => setEditor(null) };
   return (
     <>
-      <Section title="ทะเบียนประเภทกระเบื้อง" action={manage && (
+      <Section title="ทะเบียนกระเบื้อง" action={manage && (
         <button className="button primary" onClick={() => setEditor({ kind: "type" })}>เพิ่มประเภทกระเบื้อง</button>
       )}>
         {data.types.length ? (

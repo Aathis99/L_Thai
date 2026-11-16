@@ -133,11 +133,12 @@ function Modal({
 type RequestBody = Record<string, unknown>;
 
 export function FormDialog({
-  api, title, path, method = "POST", keyField, submitLabel, submitDisabled, build, onSaved, onClose, onStale, children,
+  api, title, path, scope = "pressing", method = "POST", keyField, submitLabel, submitDisabled, build, onSaved, onClose, onStale, children,
 }: {
   api: Api;
   title: string;
   path: string;
+  scope?: "pressing" | "finishing";
   method?: "POST" | "PUT" | "DELETE";
   keyField?: "request_id" | "source_key";
   submitLabel: string;
@@ -190,7 +191,7 @@ export function FormDialog({
     setBusy(true);
     setError("");
     try {
-      const result = await api<{ id: number }>(`/pressing${path}`, method, body);
+      const result = await api<{ id: number }>(`/${scope}${path}`, method, body);
       if (!Number.isInteger(result?.id)) throw new Error("รูปแบบคำตอบไม่ถูกต้อง");
     } catch (cause) {
       const status = (cause as { status?: number } | null)?.status;

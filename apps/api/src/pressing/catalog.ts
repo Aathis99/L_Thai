@@ -76,6 +76,8 @@ export function listOrders(db: Db) {
     SELECT order_id, sum(effective_pieces)::double precision AS pieces FROM pressing_effective_entries GROUP BY order_id
   )
   SELECT o.id,o.type_id,o.target_pieces,o.purpose,o.customer_reference,
+    o.customer_pieces,o.allowance_percent,o.allowance_pieces,o.color_id,o.color_name,o.pieces_per_sqm,o.production_clay,
+    o.target_pieces / o.pieces_per_sqm AS target_square_meters,
     coalesce(t.pieces,0) AS pressed_pieces,
     greatest(o.target_pieces-coalesce(t.pieces,0),0) AS short_pieces,
      greatest(coalesce(t.pieces,0)-o.target_pieces,0) AS over_pieces,
@@ -86,23 +88,64 @@ export function listOrders(db: Db) {
 
 export async function createOrder(db: Db, body: Body): Promise<number> {
   const typeId = integer(body.type_id, 'ประเภทกระเบื้อง');
-  const target = integer(body.target_pieces, 'ยอดสั่งปั๊ม');
   const purpose = body.purpose;
   if (purpose !== 'customer' && purpose !== 'stock') fail('กรุณาเลือกที่มาของใบสั่งผลิต');
   const reference = purpose === 'customer'
     ? pressingText(body.customer_reference, 'เลขอ้างอิงออเดอร์', true)
     : pressingText(body.customer_reference, 'เลขอ้างอิงออเดอร์', false);
-  const type = await one(db, 'SELECT active FROM pressing_types WHERE id=$1', [typeId]);
+  const type = await one(db, 'SELECT active,destination,clay,pieces_per_sqm FROM pressing_types WHERE id=$1', [typeId]);
   if (!type) fail('ไม่พบประเภทกระเบื้องที่เลือก');
   if (!type.active) fail('ประเภทกระเบื้องที่เลือกหยุดใช้แล้ว', 409);
-  return (await one(db, `INSERT INTO pressing_orders(type_id,target_pieces,purpose,customer_reference)
-    VALUES($1,$2,$3,$4) RETURNING id`, [typeId, target, purpose, reference])).id;
+  const production = body.customer_pieces !== undefined || body.allowance_percent !== undefined || body.color_id !== undefined;
+  if (!production) {
+    const target = integer(body.target_pieces, 'ยอดสั่งปั๊ม');
+    return (await one(db, `INSERT INTO pressing_orders(type_id,target_pieces,purpose,customer_reference)
+      VALUES($1,$2,$3,$4) RETURNING id`, [typeId, target, purpose, reference])).id;
+  }
+  if (purpose !== 'customer') fail('กรุณาระบุออเดอร์ลูกค้า');
+  const details = await orderProductionDetails(db, type.destination, body);
+  return (await one(db, `INSERT INTO pressing_orders(type_id,target_pieces,purpose,customer_reference,
+    customer_pieces,allowance_percent,allowance_pieces,color_id,color_name,pieces_per_sqm,production_destination,production_clay)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+  [typeId, details.target, purpose, reference, details.customer, details.percent, details.allowance,
+    details.color?.id ?? null, details.color?.name ?? null, type.pieces_per_sqm,type.destination,type.clay])).id;
+}
+
+async function orderProductionDetails(db: Db, destination: string, body: Body) {
+  const customer = integer(body.customer_pieces, 'ยอดลูกค้าสั่ง');
+  const percent = integer(body.allowance_percent, 'เปอร์เซ็นต์เผื่อ', 5);
+  if (percent > 20) fail('เปอร์เซ็นต์เผื่อต้องอยู่ระหว่าง 5–20');
+  const allowance = Math.ceil(customer * percent / 100);
+  const target = integer(customer + allowance, 'ยอดสั่งปั๊ม');
+  const color = destination === 'color'
+    ? await one(db, 'SELECT id,name FROM color_chart_entries WHERE id=$1', [integer(body.color_id, 'สีเคลือบ')])
+    : null;
+  if (destination === 'color' && !color) fail('ไม่พบสีเคลือบที่เลือก');
+  return { customer, percent, allowance, target, color };
+}
+
+export async function prepareLegacyOrder(db: Db, id: number, body: Body) {
+  const order = await one(db, `SELECT o.*,t.destination,t.clay,t.pieces_per_sqm AS type_rate
+    FROM pressing_orders o JOIN pressing_types t ON t.id=o.type_id WHERE o.id=$1`, [id]);
+  if (!order) fail('ไม่พบใบสั่งผลิต', 404);
+  if (order.purpose !== 'customer' || order.customer_pieces !== null) fail('ใบนี้ไม่มีข้อมูลออเดอร์ค้างให้เติม', 409);
+  const details = await orderProductionDetails(db, order.destination, body);
+  const { released } = await one(db, `SELECT EXISTS (
+    SELECT 1 FROM pressing_entries e JOIN pressing_stock_sources s ON s.entry_id=e.id
+    JOIN pressing_releases r ON r.source_id=s.id WHERE e.order_id=$1) AS released`, [id]);
+  if (released && details.target > order.target_pieces) fail('มีการปล่อยส่วนเกินแล้ว กรุณาตรวจยอดที่จัดสรรก่อนเพิ่มเป้าปั๊ม', 409);
+  await db.query(`UPDATE pressing_orders SET target_pieces=$2,customer_pieces=$3,allowance_percent=$4,
+    allowance_pieces=$5,color_id=$6,color_name=$7,pieces_per_sqm=$8,production_destination=$9,production_clay=$10 WHERE id=$1`,
+  [id, details.target, details.customer, details.percent, details.allowance, details.color?.id ?? null,
+    details.color?.name ?? null, order.type_rate, order.destination, order.clay]);
+  return id;
 }
 
 export async function updateOrderTarget(db: Db, id: number, body: Body) {
   const target = integer(body.target_pieces, 'ยอดสั่งปั๊ม');
-  const order = await one(db, 'SELECT type_id,purpose,customer_reference,target_pieces FROM pressing_orders WHERE id=$1', [id]);
+  const order = await one(db, 'SELECT type_id,purpose,customer_reference,target_pieces,customer_pieces FROM pressing_orders WHERE id=$1', [id]);
   if (!order) fail('ไม่พบใบสั่งผลิต', 404);
+  if (order.customer_pieces !== null) fail('ยอดสั่งปั๊มคำนวณจากยอดลูกค้าสั่งและเปอร์เซ็นต์เผื่อ', 409);
   for (const field of ['type_id', 'purpose', 'customer_reference']) {
     if (body[field] !== undefined && body[field] !== order[field])
       fail('แก้ไขได้เฉพาะยอดสั่งปั๊ม', 409);

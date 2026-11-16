@@ -10,7 +10,7 @@ import { promisify } from 'node:util';
 import dotenv from 'dotenv';
 import pg from 'pg';
 import { createApplication } from '../src/app.js';
-import { migrate } from '../src/database.js';
+import { finishingPermissions, migrate } from '../src/database.js';
 
 dotenv.config({ path: fileURLToPath(new URL('../../../.env', import.meta.url)), quiet: true });
 const databaseUrl = process.env.DATABASE_URL;
@@ -75,7 +75,7 @@ test('color chart migration grants reserved admin access and catalog writes requ
   await migrate(pool);
 
   const adminPermissions = (await call('/me', 'GET', undefined, admin)).body.user.permissions;
-  assert.deepEqual(adminPermissions.sort(), [...previousPermissions, 'color_chart.read', 'color_chart.manage'].sort());
+  assert.deepEqual(adminPermissions.sort(), [...previousPermissions, 'color_chart.read', 'color_chart.manage', ...Object.keys(finishingPermissions)].sort());
   assert.deepEqual((await call('/me', 'GET', undefined, reader)).body.user.permissions, ['employees.read']);
   assert.equal((await call('/color-chart')).status, 401);
   assert.equal((await call('/color-chart', 'GET', undefined, reader)).status, 403);

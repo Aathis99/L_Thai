@@ -21,6 +21,12 @@ export interface ProductionOrder {
   purpose: "customer" | "stock";
   customer_reference: string | null;
   target_pieces: number;
+  customer_pieces?: number | null;
+  allowance_pieces?: number | null;
+  allowance_percent?: number | null;
+  color_name?: string | null;
+  target_square_meters?: number | null;
+  production_clay?: string | null;
   pressed_pieces: number;
   short_pieces: number;
   over_pieces: number;
@@ -68,6 +74,8 @@ export interface StockSource {
   remaining_pieces: number;
   general_pieces: number;
   restricted_pieces: number;
+  transferable_pieces: number;
+  source_clay: string | null;
 }
 
 export interface IssueLine {
@@ -78,6 +86,7 @@ export interface IssueLine {
 }
 
 export interface StockIssue {
+  finishing_ready?: boolean;
   id: number;
   type_id: number;
   order_id: number | null;
@@ -139,6 +148,7 @@ export interface KilnJob {
 }
 
 export interface PressingData {
+  colors: { id: number; name: string }[];
   types: TileType[];
   orders: ProductionOrder[];
   workers: PressingWorker[];

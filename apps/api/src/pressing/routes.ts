@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
+import { finishingRequest } from '../finishing/requests.js';
 import { fail } from '../auth.js';
-import { audit, type Db } from '../database.js';
+import { all, audit, type Db } from '../database.js';
 import { createOrder, listOrders, listTypes, listWorkers, removeOrder, removeType, saveType, updateOrderTarget } from './catalog.js';
 import { createKilnJob, listKilnJobs, listSortResults, recordSortResult } from './kiln.js';
 import {
@@ -23,6 +24,11 @@ function routeId(value: unknown): number {
 
 export async function handlePressingRoute(req: Request, res: Response, access: PressingAccess): Promise<boolean> {
   const { method, body = {} } = req;
+  if (method === 'GET' && req.path === '/pressing/colors') {
+    access.require('pressing.read');
+    res.json({ items: await all(access.db, 'SELECT id,name FROM color_chart_entries ORDER BY display_order') });
+    return true;
+  }
   if (method === 'GET' && req.path === '/pressing/entries') {
     access.require('pressing.read');
     const orderId = req.query.order_id === undefined ? undefined : routeId(req.query.order_id);
@@ -150,9 +156,13 @@ export async function handlePressingRoute(req: Request, res: Response, access: P
       return id;
     }
     if (create) {
-      const id = await createOrder(db, body);
-      await audit(db, actor.username, 'เพิ่มใบสั่งผลิต', String(id));
-      return id;
+      const save = async () => {
+        const id = await createOrder(db, body);
+        await audit(db, actor.username, 'เพิ่มใบสั่งผลิต', String(id));
+        return id;
+      };
+      const { request_id, ...payload } = body;
+      return request_id === undefined ? save() : finishingRequest(db, 'create-order', body, payload, save);
     }
     const id = routeId(rawId);
     if (remove) {

@@ -64,8 +64,11 @@ export async function recordSortResult(db: Db, jobId: number, body: Body, actor:
   if (employeeId !== null && !(await one(db, 'SELECT 1 FROM employees WHERE id=$1', [employeeId])))
     fail('ไม่พบผู้ปั๊มที่เลือก');
   if (issueIds.length) {
-    const matching = await all(db, 'SELECT id FROM pressing_issues WHERE id=ANY($1::integer[]) AND type_id=$2',
-      [issueIds, typeId]);
+    const matching = await all(db, `SELECT i.id FROM pressing_issues i WHERE i.id=ANY($1::integer[]) AND i.type_id=$2
+      AND (NOT i.finishing_ready OR EXISTS (
+        SELECT 1 FROM pressing_sort_result_issues x JOIN pressing_sort_results r ON r.id=x.result_id
+        WHERE x.issue_id=i.id AND r.kiln_job_id=$3 AND r.type_id=$2
+      ))`, [issueIds, typeId, jobId]);
     if (matching.length !== issueIds.length) fail('รายการเบิกไม่ตรงกับประเภทกระเบื้องที่คัด', 409);
   }
 

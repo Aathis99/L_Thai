@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import pg from 'pg';
 import { createApplication } from '../src/app.js';
-import { all, migrate, one, transaction } from '../src/database.js';
+import { all, finishingPermissions, migrate, one, transaction } from '../src/database.js';
 import { recordIssue, releaseSurplus } from '../src/pressing/stock.js';
 
 dotenv.config({ path: fileURLToPath(new URL('../../../.env', import.meta.url)), quiet: true });
@@ -84,7 +84,7 @@ test('pressing catalog, orders and worker selection use session permissions', as
     assert.deepEqual(roles.find((row: { id: number }) => row.id === 1).permissions.sort(), [
       ...oldAdminPermissions, 'pressing.read', 'pressing.manage', 'pressing.record',
       'pressing.issue', 'pressing.release', 'pressing.sort', 'pressing.correct',
-      'color_chart.read', 'color_chart.manage',
+      'color_chart.read', 'color_chart.manage', ...Object.keys(finishingPermissions),
     ].sort());
   });
 
@@ -151,6 +151,8 @@ test('pressing catalog, orders and worker selection use session permissions', as
     const historical = await findOrder();
     assert.deepEqual(historical, {
       ...order, id: created.body.id, target_pieces: 1200,
+      customer_pieces: null, allowance_percent: null, allowance_pieces: null, color_id: null, color_name: null,
+      pieces_per_sqm: null, target_square_meters: null, production_clay: null,
       pressed_pieces: 0, short_pieces: 1200, over_pieces: 0, has_entries: false, has_issues: false,
     });
     const types = await press('/types');
@@ -248,7 +250,7 @@ test('pressing catalog, orders and worker selection use session permissions', as
     assert.deepEqual(stock, {
       id: stock.id, type_id: typeId, entry_id: resting.body.id, order_id: orderId,
       pressed_on: '2099-01-29', as_of: null, ready_on: '2099-02-02',
-      ready: false, destination: 'color', remaining_pieces: 1500, general_pieces: 1500, restricted_pieces: 0,
+      ready: false, destination: 'color', source_clay: 'แดง', remaining_pieces: 1500, general_pieces: 1500, restricted_pieces: 0, transferable_pieces: 0,
     });
     assert.equal((await press('/types/' + typeId, 'PUT', {
       ...tile, pieces_per_rack: 1000, rest_days: 0, pieces_per_sqm: 100, destination: 'kiln',
@@ -334,7 +336,7 @@ test('pressing catalog, orders and worker selection use session permissions', as
     assert.equal(sources.length, 3);
     assert.deepEqual(sources.find((row: { id: number }) => row.id === created.body.id), {
       id: created.body.id, type_id: typeId, entry_id: null, order_id: null, pressed_on: null, as_of: '2024-02-29',
-      ready_on: null, ready: false, destination: 'color', remaining_pieces: 500, general_pieces: 500, restricted_pieces: 0,
+      ready_on: null, ready: false, destination: 'color', source_clay: 'แดง', remaining_pieces: 500, general_pieces: 500, restricted_pieces: 0, transferable_pieces: 0,
     });
     assert.equal(sources.find((row: { id: number }) => row.id === known.body.id).ready, true);
     assert.equal(sources.find((row: { id: number }) => row.id === future.body.id).ready, false);

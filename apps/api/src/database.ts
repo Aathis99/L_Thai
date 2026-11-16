@@ -1,6 +1,7 @@
 import pg from 'pg';
 import { migrateColorChart } from './color-chart/schema.js';
 import { migratePressing } from './pressing/schema.js';
+import { migrateFinishing } from './finishing/schema.js';
 
 export type Db = pg.Pool | pg.PoolClient;
 const pressingPermissions = {
@@ -16,11 +17,23 @@ const colorChartPermissions = {
   'color_chart.read': 'ดูชาร์ตสี',
   'color_chart.manage': 'จัดการชาร์ตสี',
 };
+export const finishingPermissions = {
+  'finishing.read': 'ดูงานชุบเคลือบ งานเตา และ QC',
+  'finishing.prepare': 'ตรวจยืนยันใบสั่งผลิตและใบเบิกค้าง',
+  'finishing.glaze': 'บันทึกงานชุบเคลือบ',
+  'finishing.temperature': 'ตั้งช่วงอุณหภูมิเผา',
+  'finishing.fire': 'จัดการรอบเผา',
+  'finishing.qc': 'บันทึกผลคัด QC',
+  'finishing.correct': 'ปรับยอดงานชุบ งานเตา และ QC',
+  'finishing.allocate': 'จัดสรรแผ่นดีให้ออเดอร์',
+  'finishing.stock': 'ยืนยันรับเข้าสต็อกสินค้าสำเร็จ',
+};
 export const PERMISSIONS: Record<string,string> = {
   'employees.read':'ดูข้อมูลพนักงาน','employees.create':'เพิ่มพนักงาน','employees.update':'แก้ไขพนักงาน','employees.delete':'ลบพนักงาน',
   'positions.manage':'จัดการตำแหน่งงาน','users.manage':'จัดการบัญชีผู้ใช้','roles.manage':'จัดการบทบาทและสิทธิ์','audit.read':'ดูประวัติการเปลี่ยนแปลง',
   ...pressingPermissions,
   ...colorChartPermissions,
+  ...finishingPermissions,
 };
 export const baselineRoles = [
   { id: 1, name: 'ผู้ดูแลระบบ', permissions: Object.keys(PERMISSIONS) },
@@ -36,7 +49,7 @@ export async function grantAdminProductionPermissions(db: Db): Promise<void> {
   const admin = await one(db, 'SELECT permissions FROM roles WHERE id=1');
   if (!admin) return;
   const permissions: string[] = JSON.parse(admin.permissions);
-  const missing = Object.keys({ ...pressingPermissions, ...colorChartPermissions })
+  const missing = Object.keys({ ...pressingPermissions, ...colorChartPermissions, ...finishingPermissions })
     .filter(permission => !permissions.includes(permission));
   if (missing.length)
     await db.query('UPDATE roles SET permissions=$1 WHERE id=1', [JSON.stringify([...permissions, ...missing])]);
@@ -68,6 +81,7 @@ export async function migrate(pool:pg.Pool){
     `);
     await migratePressing(db);
     await migrateColorChart(db);
+    await migrateFinishing(db);
     for (const { id, name, permissions } of baselineRoles)
       await db.query('INSERT INTO roles(id,name,permissions) VALUES($1,$2,$3) ON CONFLICT(id) DO NOTHING',[id,name,JSON.stringify(permissions)]);
     await grantAdminProductionPermissions(db);

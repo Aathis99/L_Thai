@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Auth from "./auth";
-import ColorChartPanel from "./color-chart/panel";
+import CategoryPanel from "./category/panel";
+import FinishingPanel from "./finishing/panel";
 import Dialog, { type DialogState } from "./dialog";
 import { Brand } from "./fields";
 import PressingPanel from "./pressing/panel";
 import RecordTable from "./record-table";
-import { canOpenColorChart } from "../lib/color-chart";
+import { visibleCategoryTabs } from "../lib/category";
 import { canOpenPressing } from "../lib/pressing";
 import {
   allowed,
@@ -22,18 +23,20 @@ import {
   type View,
 } from "../lib/types";
 
-type WorkspaceView = View | "pressing" | "color-chart";
-const workspaceViews: WorkspaceView[] = [...views, "pressing", "color-chart"];
+type WorkspaceView = View | "pressing" | "category" | "finishing";
+const workspaceViews: WorkspaceView[] = [...views, "pressing", "finishing", "category"];
 
 function canOpenView(user: SessionUser, view: WorkspaceView) {
   if (view === "pressing") return canOpenPressing(user.permissions);
-  if (view === "color-chart") return canOpenColorChart(user.permissions);
+  if (view === "category") return visibleCategoryTabs(user.permissions).length > 0;
+  if (view === "finishing") return user.permissions.includes("finishing.read");
   return allowed(user, view);
 }
 
 function workspaceLabel(view: WorkspaceView | null) {
   if (view === "pressing") return "งานปั๊ม";
-  if (view === "color-chart") return "ชาร์ตสี";
+  if (view === "category") return "หมวดหมู่";
+  if (view === "finishing") return "งานชุบ เตา และ QC";
   return view ? labels[view] : "พื้นที่ทำงาน";
 }
 
@@ -254,9 +257,10 @@ export default function Workspace() {
     );
   const can = (permission: string) => user.permissions.includes(permission);
   const showPressing = canOpenPressing(user.permissions);
-  const showColorChart = canOpenColorChart(user.permissions);
-  const showFactoryNav = showPressing || showColorChart;
-  const recordView = view === "pressing" || view === "color-chart" ? null : view;
+  const showCategory = canOpenView(user, "category");
+  const showFinishing = canOpenView(user, "finishing");
+  const showFactoryNav = showPressing || showCategory || showFinishing;
+  const recordView = view === "pressing" || view === "category" || view === "finishing" ? null : view;
   const current = records.employees.filter((employee) => !employee.archived);
   const active = current.filter((employee) => employee.active);
   const create = () => {
@@ -296,7 +300,7 @@ export default function Workspace() {
                   aria-label={candidate === "pressing" ? "งานปั๊ม" : undefined}
                 >
                   <span aria-hidden="true">
-                    {candidate === "pressing" ? "▧" : candidate === "color-chart" ? "◈" : symbols[candidate]}
+                    {candidate === "pressing" ? "▧" : candidate === "category" ? "◈" : candidate === "finishing" ? "▤" : symbols[candidate]}
                   </span>
                   {workspaceLabel(candidate)}
                   {candidate === "employees" && <small>{current.length}</small>}
@@ -369,8 +373,10 @@ export default function Workspace() {
                 <p>
                   {view === "pressing"
                     ? "ใบสั่งผลิต ยอดปั๊ม สต็อก และผลคัดหลังเผา"
-                    : view === "color-chart"
-                      ? "ทะเบียนชื่อสีกระเบื้อง ภาพตัวอย่าง และหมายเหตุ"
+                    : view === "category"
+                      ? "ข้อมูลอ้างอิงสำหรับการผลิต"
+                      : view === "finishing"
+                        ? "ใบเบิก ชุดชุบ รอบเผา ผลคัด และยอดพร้อมส่ง"
                       : view
                         ? subtitles[view]
                         : "บัญชีนี้ยังไม่ได้รับสิทธิ์เข้าถึงเมนู กรุณาติดต่อผู้ดูแลระบบ"}
@@ -464,9 +470,10 @@ export default function Workspace() {
             {view === "pressing" && showPressing && (
               <PressingPanel api={api} user={user} />
             )}
-            {view === "color-chart" && showColorChart && (
-              <ColorChartPanel api={api} user={user} />
+            {view === "category" && showCategory && (
+              <CategoryPanel api={api} user={user} />
             )}
+            {view === "finishing" && showFinishing && <FinishingPanel api={api} user={user} />}
             {recordView && (
               <section className="panel">
                 <div className="panel-toolbar">

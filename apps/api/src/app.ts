@@ -16,6 +16,7 @@ import {
 } from "./database.js";
 import { COLOR_CHART_IMAGE_PATH, handleColorChartRoute } from "./color-chart/routes.js";
 import { handlePressingRoute } from "./pressing/routes.js";
+import { handleFinishingRoute } from "./finishing/routes.js";
 import {
   ApiError,
   fail,
@@ -245,6 +246,10 @@ export function createApplication(pool: pg.Pool, options: Options = {}) {
     if (
       path.startsWith("/pressing/") &&
       (await handlePressingRoute(req, res, routeAccess("pressing.read")))
+    ) return;
+    if (
+      path.startsWith("/finishing/") &&
+      (await handleFinishingRoute(req, res, routeAccess("finishing.read")))
     ) return;
     if (
       (path === "/color-chart" || path.startsWith("/color-chart/")) &&
