@@ -97,7 +97,7 @@
 **Files:** เพิ่ม `docs/color-chart-startup.md` อัปเดต `docs/CURRENT.md` หลังตรวจจริง
 
 - [x] เปิด Docker ชุดทดสอบแยก ทดสอบผ่านเบราว์เซอร์เดสก์ท็อปและมือถือด้วยผู้จัดการและผู้ดู ตรวจ 90 รายการ ค้นชื่อ อ่านหมายเหตุ เพิ่มชื่อ เปลี่ยนรูป ลบเฉพาะรูป และปุ่มจัดการตามสิทธิ์
-- [x] รัน `npm run check`, `npm run build` และ `npm test` พร้อม opt-in Docker handoff integration บนฐานทดสอบ คาดว่าทุกชุดผ่าน
+- [x] รัน `npm run check`, `npm run build` และ `npm test` พร้อมชุดทดสอบส่งงานข้ามเครื่องเดิมบนฐานทดสอบ
 - [x] สำรองฐานทดสอบที่มีทะเบียนและภาพ กู้คืนไปอีกฐานทดสอบ และเทียบลำดับ ชื่อ หมายเหตุ SHA-256 ของภาพ รวมถึงเปิดภาพผ่าน API หลังคืนข้อมูล
 - [x] เขียนคู่มือคำสั่ง preview/apply และการให้สิทธิ์ ระบุฐานและ commit ที่ทดสอบ ผลที่รันจริง และขั้นตอนเปิดใช้ใน `docs/CURRENT.md`
 - [x] ตรวจ `git diff --check` แล้ว Commit ด้วย `docs: document color chart import and verification`

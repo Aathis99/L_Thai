@@ -1,6 +1,6 @@
 # LThai Factory · Next.js / Express / PostgreSQL
 
-ทำงานสลับเครื่องที่ทำงาน/บ้าน: [คู่มือ Git + OneDrive + Docker](docs/cross-machine-guide.md) โดยใช้ฐาน Docker พอร์ต 5434 เป็นหลักทั้งสองเครื่อง และให้ Codex อ่าน [สถานะงานล่าสุด](docs/CURRENT.md) ก่อนเริ่มงาน
+ให้ Codex อ่าน [สถานะงานล่าสุด](docs/CURRENT.md) ก่อนเริ่มงาน
 
 หน้าบ้านใช้ Tailwind CSS v4 + PostCSS แล้ว: [แนวทาง CSS และการเพิ่มหน้าจอ](docs/tailwind.md) รวม theme สี/ฟอนต์และ reusable components ไว้ในโปรเจกต์ ไม่มี CSS CDN ระหว่างใช้งาน
 
@@ -15,7 +15,7 @@ cd D:\LThai
 npm run docker:up
 ```
 
-เปิด http://127.0.0.1:3001 ใช้ข้อมูลใน Docker พอร์ต 5434 เมื่อต้องเปลี่ยนเครื่องให้ใช้ [คู่มือส่ง–รับงาน](docs/cross-machine-guide.md) ก่อนเปิดทำงานต่อ
+เปิด http://127.0.0.1:3001 ใช้ฐานข้อมูลหลักใน Docker พอร์ต 5434
 
 ## วิธีเดิมบน Windows (อ้างอิงฐาน native แยก)
 
@@ -44,7 +44,7 @@ npm start
 
 รหัสผ่านฐานข้อมูลแยกจากรหัสผ่านเข้าเว็บ เก็บใน `.env` และไฟล์ส่วนตัวดังกล่าว ไม่แสดงในเอกสารนี้ หาก DBeaver ยังไม่มี PostgreSQL driver ต้องดาวน์โหลด driver ครั้งแรกขณะมีอินเทอร์เน็ต
 
-ฐาน native เดิมเป็น PostgreSQL 18.6 รันตรงบน Windows โดยใช้ binaries ที่ `.tools/postgresql/pgsql/bin` และ cluster ที่ `data/postgres` พอร์ต 5433 รหัสดูใน `data/connection-info.txt` เป็นข้อมูลแยกจาก Docker หลักและไม่ได้ส่งผ่านคำสั่ง handoff ส่วน `compose.yaml` เป็นทางเลือกฐานอย่างเดียวที่ใช้พอร์ต 5433 เช่นกัน ห้ามเปิดชนกับ native; ระบบหลักปัจจุบันใช้ `compose.docker.yaml` พอร์ต 5434
+ฐาน native เดิมเป็น PostgreSQL 18.6 รันตรงบน Windows โดยใช้ binaries ที่ `.tools/postgresql/pgsql/bin` และ cluster ที่ `data/postgres` พอร์ต 5433 รหัสดูใน `data/connection-info.txt` เป็นข้อมูลแยกจาก Docker หลัก ส่วน `compose.yaml` เป็นทางเลือกฐานอย่างเดียวที่ใช้พอร์ต 5433 เช่นกัน ห้ามเปิดชนกับ native ระบบหลักปัจจุบันใช้ `compose.docker.yaml` พอร์ต 5434
 
 ## ข้อมูลที่ย้ายและนำเข้า
 
@@ -88,6 +88,10 @@ npm start
 Next.js API_INTERNAL_URL ถูกใช้ตอน build หากเปลี่ยน host/port API ให้แก้ `.env` แล้ว build ใหม่ก่อนเริ่มแอป
 
 ## ฐานข้อมูลและสำรอง
+
+ใช้ [วิธีสำรองและซ้อมกู้ฐาน Docker หลัก](docs/docker.md#docker-backup) สำหรับฐาน `lthai` พอร์ต 5434
+
+คำสั่งต่อไปนี้ใช้กับ PostgreSQL native เดิมพอร์ต 5433
 
 ```powershell
 npm run db:up
