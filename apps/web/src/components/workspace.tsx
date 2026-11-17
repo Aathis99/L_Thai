@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import Auth from "./auth";
 import CategoryPanel from "./category/panel";
-import FinishingPanel from "./finishing/panel";
+import FiringPage from "./finishing/firing";
+import GlazingPage from "./finishing/glazing";
+import QcPage from "./finishing/qc";
 import Dialog, { type DialogState } from "./dialog";
 import { Brand } from "./fields";
 import PressingPanel from "./pressing/panel";
@@ -25,13 +27,13 @@ import {
   type View,
 } from "../lib/types";
 
-type WorkspaceView = View | "pressing" | "category" | "finishing" | "stock";
-const workspaceViews: WorkspaceView[] = [...views, "pressing", "finishing", "stock", "category"];
+type WorkspaceView = View | "pressing" | "category" | "glazing" | "firing" | "qc" | "stock";
+const workspaceViews: WorkspaceView[] = [...views, "pressing", "glazing", "firing", "qc", "stock", "category"];
 
 function canOpenView(user: SessionUser, view: WorkspaceView) {
   if (view === "pressing") return canOpenPressing(user.permissions);
   if (view === "category") return visibleCategoryTabs(user.permissions).length > 0;
-  if (view === "finishing") return user.permissions.includes("finishing.read");
+  if (view === "glazing" || view === "firing" || view === "qc") return user.permissions.includes("finishing.read");
   if (view === "stock") return visibleStockTabs(user.permissions).length > 0;
   return allowed(user, view);
 }
@@ -39,7 +41,9 @@ function canOpenView(user: SessionUser, view: WorkspaceView) {
 function workspaceLabel(view: WorkspaceView | null) {
   if (view === "pressing") return "งานปั๊ม";
   if (view === "category") return "หมวดหมู่";
-  if (view === "finishing") return "งานชุบ เตา และ QC";
+  if (view === "glazing") return "งานชุบเคลือบ";
+  if (view === "firing") return "งานเตา";
+  if (view === "qc") return "QC";
   if (view === "stock") return "สต็อก";
   return view ? labels[view] : "พื้นที่ทำงาน";
 }
@@ -63,6 +67,7 @@ export default function Workspace() {
   const [records, setRecords] = useState<Records>(emptyRecords);
   const [view, setView] = useState<WorkspaceView | null>("employees");
   const [stockTab, setStockTab] = useState<StockTab>();
+  const [qcRound, setQcRound] = useState<number>();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("current");
   const [dialog, setDialog] = useState<DialogState | null>(null);
@@ -178,8 +183,9 @@ export default function Workspace() {
     return () => window.removeEventListener("focus", onFocus);
   }, [mode, refresh]);
 
-  async function navigate(next: WorkspaceView, initialStockTab?: StockTab) {
-    if (next === "stock") setStockTab(initialStockTab);
+  async function navigate(next: WorkspaceView, options?: { stockTab?: StockTab; roundId?: number }) {
+    if (next === "stock") setStockTab(options?.stockTab);
+    if (next === "qc") setQcRound(options?.roundId);
     setView(next);
     setQuery("");
     setFilter("current");
@@ -264,10 +270,11 @@ export default function Workspace() {
   const can = (permission: string) => user.permissions.includes(permission);
   const showPressing = canOpenPressing(user.permissions);
   const showCategory = canOpenView(user, "category");
-  const showFinishing = canOpenView(user, "finishing");
+  const showFinishing = canOpenView(user, "glazing");
   const showStock = canOpenView(user, "stock");
   const showFactoryNav = showPressing || showCategory || showFinishing || showStock;
-  const recordView = view === "pressing" || view === "category" || view === "finishing" || view === "stock" ? null : view;
+  const recordView = view === "pressing" || view === "category" || view === "glazing" ||
+    view === "firing" || view === "qc" || view === "stock" ? null : view;
   const current = records.employees.filter((employee) => !employee.archived);
   const active = current.filter((employee) => employee.active);
   const create = () => {
@@ -307,8 +314,8 @@ export default function Workspace() {
                   aria-label={candidate === "pressing" ? "งานปั๊ม" : undefined}
                 >
                   <span aria-hidden="true">
-                    {candidate === "pressing" ? "▧" : candidate === "category" ? "◈" : candidate === "finishing" ? "▤" :
-                      candidate === "stock" ? "▦" : symbols[candidate]}
+                    {candidate === "pressing" ? "▧" : candidate === "category" ? "◈" : candidate === "glazing" ? "◒" :
+                      candidate === "firing" ? "▤" : candidate === "qc" ? "✓" : candidate === "stock" ? "▦" : symbols[candidate]}
                   </span>
                   {workspaceLabel(candidate)}
                   {candidate === "employees" && <small>{current.length}</small>}
@@ -378,16 +385,14 @@ export default function Workspace() {
               <div>
                 {(recordView || !view) && <p className="eyebrow">PEOPLE &amp; ACCESS</p>}
                 <h1>{workspaceLabel(view)}</h1>
-                {view !== "stock" && <p>
+                {view !== "stock" && view !== "glazing" && view !== "firing" && view !== "qc" && <p>
                   {view === "pressing"
                     ? "ใบสั่งผลิตและยอดปั๊ม"
                     : view === "category"
                       ? "ข้อมูลอ้างอิงสำหรับการผลิต"
-                      : view === "finishing"
-                        ? "ใบเบิก ชุดชุบ รอบเผา ผลคัด และยอดพร้อมส่ง"
-                        : view
-                          ? subtitles[view]
-                          : "บัญชีนี้ยังไม่ได้รับสิทธิ์เข้าถึงเมนู กรุณาติดต่อผู้ดูแลระบบ"}
+                      : view
+                        ? subtitles[view]
+                        : "บัญชีนี้ยังไม่ได้รับสิทธิ์เข้าถึงเมนู กรุณาติดต่อผู้ดูแลระบบ"}
                 </p>}
               </div>
               {recordView &&
@@ -481,8 +486,11 @@ export default function Workspace() {
             {view === "category" && showCategory && (
               <CategoryPanel api={api} user={user} />
             )}
-            {view === "finishing" && showFinishing && <FinishingPanel api={api} user={user}
-              openFinishedStock={() => void navigate("stock", "finished")} />}
+            {view === "glazing" && showFinishing && <GlazingPage api={api} user={user} />}
+            {view === "firing" && showFinishing && <FiringPage api={api} user={user}
+              openQc={roundId => void navigate("qc", { roundId })} />}
+            {view === "qc" && showFinishing && <QcPage api={api} user={user} initialRoundId={qcRound}
+              openFinishedStock={() => void navigate("stock", { stockTab: "finished" })} />}
             {view === "stock" && showStock && <StockPanel api={api} user={user} initialTab={stockTab} />}
             {recordView && (
               <section className="panel">
