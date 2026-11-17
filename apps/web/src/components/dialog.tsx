@@ -118,16 +118,16 @@ export default function Dialog({
                 label="รหัสผ่านใหม่"
                 type="password"
                 required
-                minLength={12}
+                minLength={10}
                 autoComplete="new-password"
-                placeholder="อย่างน้อย 12 ตัวอักษร"
+                placeholder="อย่างน้อย 10 ตัวอักษร"
               />
               <Field
                 name="confirm"
                 label="ยืนยันรหัสผ่านใหม่"
                 type="password"
                 required
-                minLength={12}
+                minLength={10}
                 autoComplete="new-password"
               />
               <p className="helper">เปลี่ยนแล้วต้องเข้าสู่ระบบใหม่ทุกอุปกรณ์</p>
@@ -321,9 +321,9 @@ function EditorFields({
             }
             type="password"
             required={!item}
-            minLength={12}
+            minLength={10}
             autoComplete="new-password"
-            placeholder="อย่างน้อย 12 ตัวอักษร"
+            placeholder="อย่างน้อย 10 ตัวอักษร"
           />
         </div>
         <StatusField active={account?.active} />

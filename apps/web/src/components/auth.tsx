@@ -101,10 +101,10 @@ export default function Auth({
               label="รหัสผ่าน"
               type="password"
               required
-              minLength={setup ? 12 : undefined}
+              minLength={setup ? 10 : undefined}
               autoComplete={setup ? "new-password" : "current-password"}
               placeholder={
-                setup ? "อย่างน้อย 12 ตัวอักษร" : "กรอกรหัสผ่านของคุณ"
+                setup ? "อย่างน้อย 10 ตัวอักษร" : "กรอกรหัสผ่านของคุณ"
               }
             />
             {setup && (
@@ -113,7 +113,7 @@ export default function Auth({
                 label="ยืนยันรหัสผ่าน"
                 type="password"
                 required
-                minLength={12}
+                minLength={10}
                 autoComplete="new-password"
               />
             )}

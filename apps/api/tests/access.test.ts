@@ -24,13 +24,13 @@ test('Express/PostgreSQL access lifecycle preserves authorization and transactio
     const response = await fetch(base+path,{method,headers:{'Content-Type':'application/json',cookie,...(origin?{Origin:origin}:{})},body:data===undefined?undefined:JSON.stringify(data)});
     return {status:response.status,body:await response.json() as any,cookie:response.headers.get('set-cookie')?.split(';')[0]||''};
   }
-  let admin='', reader=''; const password='test-password-long-enough';
+  let admin='', reader=''; const password='access-%10', shortPassword='access-%9';
   let employee=0, userId=0, role=0;
   try {
     await t.test('setup once, no credentials by default, login and hashed storage',async()=>{
       assert.equal((await call('/setup')).body.required,true);
       assert.equal((await call('/me')).status,401);
-      assert.equal((await call('/setup','POST',{username:'admin',name:'ผู้ดูแล',password:'short'})).status,400);
+      assert.equal((await call('/setup','POST',{username:'admin',name:'ผู้ดูแล',password:shortPassword})).status,400);
       assert.equal((await call('/setup','POST',{username:'admin',name:'ผู้ดูแล',password})).status,201);
       assert.equal((await call('/setup','POST',{username:'other',name:'อื่น',password})).status,409);
       assert.equal((await call('/login','POST',{username:'admin',password:'wrong'})).status,401);
@@ -55,7 +55,11 @@ test('Express/PostgreSQL access lifecycle preserves authorization and transactio
     });
     await t.test('reader denied writes, role edits apply immediately, role references cannot be deleted',async()=>{
       role=(await call('/roles','POST',{name:'อ่านพนักงาน',permissions:['employees.read']},admin)).body.id;
-      userId=(await call('/users','POST',{username:'reader',name:'ผู้อ่าน',role_id:role,employee_id:employee,password,active:true},admin)).body.id;
+      const readerAccount = {username:'reader',name:'ผู้อ่าน',role_id:role,employee_id:employee,active:true};
+      assert.equal((await call('/users','POST',{...readerAccount,password:shortPassword},admin)).status,400);
+      const created = await call('/users','POST',{...readerAccount,password},admin);
+      assert.equal(created.status,201);
+      userId=created.body.id;
       reader=(await call('/login','POST',{username:'reader',password})).cookie;
       assert.equal((await call('/employees','GET',undefined,reader)).status,200);
       assert.equal((await call('/employees','POST',{code:'BAD',name:'ไม่มีสิทธิ์'},reader)).status,403);
@@ -78,6 +82,15 @@ test('Express/PostgreSQL access lifecycle preserves authorization and transactio
       assert.equal((await call('/employees','POST',null,admin)).status,400);
       assert.equal((await call('/roles','POST',{name:'X',permissions:['everything']},admin)).status,400);
     });
+    await t.test('administrator password reset accepts 10 characters and rejects 9',async()=>{
+      const account = {username:'reader',name:'ผู้อ่าน',role_id:role,employee_id:employee,active:true};
+      const resetPassword = 'reset-%ten';
+      assert.equal((await call('/users/'+userId,'PUT',{...account,password:shortPassword},admin)).status,400);
+      assert.equal((await call('/users/'+userId,'PUT',{...account,password:resetPassword},admin)).status,200);
+      assert.equal((await call('/me','GET',undefined,reader)).status,401);
+      reader=(await call('/login','POST',{username:'reader',password:resetPassword})).cookie;
+      assert.ok(reader);
+    });
     await t.test('deleting an account releases employee link and invalidates sessions',async()=>{
       assert.equal((await call('/users/'+userId,'DELETE',undefined,admin)).status,200);
       assert.equal((await call('/me','GET',undefined,reader)).status,401);
@@ -92,14 +105,16 @@ test('Express/PostgreSQL access lifecycle preserves authorization and transactio
       assert.equal(Number((await pool.query('SELECT count(*) FROM users WHERE employee_id=$1 AND active=1',[target])).rows[0].count),0);
     });
     await t.test('password changes revoke sessions, audit excludes secrets, logout and expiration work',async()=>{
-      assert.equal((await call('/password','POST',{current:password,password:'new-test-password-long'},admin)).status,200);
+      const newPassword = 'change-%10';
+      assert.equal((await call('/password','POST',{current:password,password:shortPassword},admin)).status,400);
+      assert.equal((await call('/password','POST',{current:password,password:newPassword},admin)).status,200);
       assert.equal((await call('/me','GET',undefined,admin)).status,401);
-      admin=(await call('/login','POST',{username:'admin',password:'new-test-password-long'})).cookie;
+      admin=(await call('/login','POST',{username:'admin',password:newPassword})).cookie;
       const audit=await call('/audit','GET',undefined,admin);
       assert.ok(audit.body.items.length>0); assert.ok(!JSON.stringify(audit.body).includes(password));
       assert.equal((await call('/logout','POST',{},admin)).status,200);
       assert.equal((await call('/me','GET',undefined,admin)).status,401);
-      admin=(await call('/login','POST',{username:'admin',password:'new-test-password-long'})).cookie;
+      admin=(await call('/login','POST',{username:'admin',password:newPassword})).cookie;
       await pool.query('UPDATE sessions SET expires=0');
       assert.equal((await call('/me','GET',undefined,admin)).status,401);
     });

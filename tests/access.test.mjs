@@ -18,13 +18,14 @@ test('employee access lifecycle with real HTTP, permissions and persistent SQLit
     const res = await fetch(base + '/api' + path, { method, headers: { 'Content-Type': 'application/json', cookie, ...extra }, body: body === undefined ? undefined : JSON.stringify(body) });
     return { status: res.status, body: await res.json(), cookie: res.headers.get('set-cookie')?.split(';')[0] };
   }
-  const password = 'a-strong-test-password';
+  const password = 'access-%10';
+  const newPassword = 'change-%10';
   try {
     let admin;
     await t.test('one-time setup, authentication and safe password storage', async () => {
       assert.equal((await call('/me')).status, 401);
       assert.equal((await call('/setup')).body.required, true);
-      assert.equal((await call('/setup', 'POST', { username: 'admin', name: 'ผู้ดูแล', password: 'short' })).status, 400);
+      assert.equal((await call('/setup', 'POST', { username: 'admin', name: 'ผู้ดูแล', password: 'access-%9' })).status, 400);
       assert.equal((await call('/setup', 'POST', { username: 'admin', name: 'ผู้ดูแล', password })).status, 201);
       assert.equal((await call('/setup', 'POST', { username: 'other', name: 'อื่น', password })).status, 409);
       assert.equal((await call('/login', 'POST', { username: 'admin', password: 'wrong' })).status, 401);
@@ -97,9 +98,9 @@ test('employee access lifecycle with real HTTP, permissions and persistent SQLit
     await t.test('disabled users and changed passwords revoke existing sessions', async () => {
       assert.equal((await call('/users/' + readerId, 'PUT', { username: 'reader', name: 'อ่าน', role_id: role, active: false }, admin)).status, 200);
       assert.equal((await call('/me', 'GET', undefined, reader)).status, 401);
-      assert.equal((await call('/password', 'POST', { current: password, password: 'updated-strong-password' }, admin)).status, 200);
+      assert.equal((await call('/password', 'POST', { current: password, password: newPassword }, admin)).status, 200);
       assert.equal((await call('/me', 'GET', undefined, admin)).status, 401);
-      admin = (await call('/login', 'POST', { username: 'admin', password: 'updated-strong-password' })).cookie;
+      admin = (await call('/login', 'POST', { username: 'admin', password: newPassword })).cookie;
     });
     await t.test('a deleted account releases its employee link for a replacement account', async () => {
       assert.equal((await call('/users/' + readerId, 'PUT', { username: 'reader', name: 'อ่าน', role_id: role, employee_id: employee, active: false }, admin)).status, 200);
@@ -129,7 +130,7 @@ test('employee access lifecycle with real HTTP, permissions and persistent SQLit
       app = createApp({ databasePath });
       await new Promise(r => app.server.listen(0, '127.0.0.1', r));
       base = `http://127.0.0.1:${app.server.address().port}`;
-      admin = (await call('/login', 'POST', { username: 'admin', password: 'updated-strong-password' })).cookie;
+      admin = (await call('/login', 'POST', { username: 'admin', password: newPassword })).cookie;
       assert.ok((await call('/employees', 'GET', undefined, admin)).body.items.some(e => e.code === 'EMP001'));
       assert.equal((await call('/setup')).body.required, false);
     });

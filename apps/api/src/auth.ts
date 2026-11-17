@@ -10,7 +10,7 @@ export function text(value:unknown,label:string,required=true,max=120):string{
 }
 export function username(value:unknown){const name=text(value,'ชื่อผู้ใช้',true,50).toLowerCase();if(!/^[a-z0-9._-]{3,50}$/.test(name))fail('ชื่อผู้ใช้ต้องเป็น a-z, 0-9, จุด, ขีด หรือขีดล่าง อย่างน้อย 3 ตัว');return name;}
 export async function hashPassword(value:unknown){
-  if(typeof value!=='string'||value.length<12||value.length>128)fail('รหัสผ่านต้องมี 12–128 ตัวอักษร');
+  if(typeof value!=='string'||value.length<10||value.length>128)fail('รหัสผ่านต้องมี 10–128 ตัวอักษร');
   const salt=randomBytes(16).toString('hex');return salt+':'+(await derive(value,salt,64) as Buffer).toString('hex');
 }
 export const DUMMY_HASH='0'.repeat(32)+':'+'0'.repeat(128);

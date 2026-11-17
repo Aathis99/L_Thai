@@ -43,7 +43,7 @@ function workspaceLabel(view: WorkspaceView | null) {
   if (view === "category") return "หมวดหมู่";
   if (view === "glazing") return "งานชุบเคลือบ";
   if (view === "firing") return "งานเตา";
-  if (view === "qc") return "QC";
+  if (view === "qc") return "ตรวจสอบคุณภาพ(QC)";
   if (view === "stock") return "สต็อก";
   return view ? labels[view] : "พื้นที่ทำงาน";
 }
