@@ -28,7 +28,7 @@ import {
 } from "../lib/types";
 
 type WorkspaceView = View | "pressing" | "category" | "glazing" | "firing" | "qc" | "stock";
-const workspaceViews: WorkspaceView[] = [...views, "pressing", "glazing", "firing", "qc", "stock", "category"];
+const workspaceViews: WorkspaceView[] = [...views, "category", "stock", "pressing", "glazing", "firing", "qc"];
 
 function canOpenView(user: SessionUser, view: WorkspaceView) {
   if (view === "pressing") return canOpenPressing(user.permissions);
