@@ -123,30 +123,6 @@ export interface IssueReversal {
   }[];
 }
 
-export interface SortResult {
-  id: number;
-  type_id: number;
-  revision: number;
-  is_current: boolean;
-  sorted_on: string;
-  good_pieces: number;
-  waste_pieces: number;
-  issue_ids: number[];
-  employee_id: number | null;
-  correction_reason: string | null;
-  submitted_by_username: string;
-  submitted_at: string;
-}
-
-export interface KilnJob {
-  id: number;
-  reference: string;
-  fired_on: string;
-  good_pieces: number;
-  waste_pieces: number;
-  results: SortResult[];
-}
-
 export interface PressingData {
   colors: { id: number; name: string }[];
   types: TileType[];
@@ -155,7 +131,6 @@ export interface PressingData {
   entries: PressingEntry[];
   stock: StockSource[];
   issues: StockIssue[];
-  jobs: KilnJob[];
 }
 
 export const destinations = { color: "งานสี", kiln: "เข้าเตา" };

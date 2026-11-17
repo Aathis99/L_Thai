@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState, type ComponentProps, type ReactNode } from "react";
+import { finishingTileName, type FinishingTile } from "../../lib/finishing";
 import { bangkokDate, count, formInteger, formText } from "../../lib/pressing";
 import type { Api, SessionUser } from "../../lib/types";
 import { Field } from "../fields";
 import { Card, Check, Choice, Facts, FormDialog, Section } from "../pressing/shared";
 
-type Tile = { id: number; width: number; length: number; clay: string; name: string | null };
 type Order = { id: number; customer_reference: string; type_id: number; clay: string; color_name: string | null;
   customer_pieces: number; ready_pieces: number; missing_pieces: number };
 type Issue = { id: number; type_id: number; clay: string; order_id: number; customer_reference: string; destination: "color" | "kiln";
@@ -23,17 +23,15 @@ type Qc = { id: number; round_id: number; sorted_on: string; good_pieces: number
   unallocated_pieces: number; stocked_pieces: number; stock_available: number; orders: number[]; type_id: number;
   clay: string; color_name: string | null; voided_at: string | null; loads: { id: number; order_id: number; pieces: number }[];
   allocations: { id: number; order_id: number; pieces: number; voided_at: string | null }[] };
-type Receipt = { id: number; qc_id: number; type_id: number; clay: string; color_id: number | null; color_name: string | null; pieces: number;
-  recorded_by_username: string; recorded_at: string; voided_at: string | null };
 type Data = {
-  types: Tile[]; orders: Order[]; issues: Issue[]; glazing: Batch[]; rounds: Round[]; sources: Source[];
-  qc: Qc[]; stock: Receipt[]; workers: { id: number; code: string; name: string }[];
+  types: FinishingTile[]; orders: Order[]; issues: Issue[]; glazing: Batch[]; rounds: Round[]; sources: Source[];
+  qc: Qc[]; workers: { id: number; code: string; name: string }[];
 };
 type Editor = Pick<ComponentProps<typeof FormDialog>, "title" | "path" | "build" | "children">;
 
 const sections = [
   ["glazing", "งานชุบเคลือบ"], ["firing", "งานเตา"], ["qc", "ผลคัด QC"],
-  ["orders", "พร้อมส่งและสต็อก"],
+  ["orders", "ยอดพร้อมส่ง"],
 ] as const;
 
 function NumberField({ name, label, min = 1, max, defaultValue, required = true }: {
@@ -64,7 +62,9 @@ function sourceName(source: Source) {
   return source.batch_id === null ? `ใบเบิกบรีส #${source.issue_id}` : `ชุดชุบ #${source.batch_id}`;
 }
 
-export default function FinishingPanel({ api, user }: { api: Api; user: SessionUser }) {
+export default function FinishingPanel({ api, user, openFinishedStock }: {
+  api: Api; user: SessionUser; openFinishedStock: () => void;
+}) {
   const [section, setSection] = useState<(typeof sections)[number][0]>("glazing");
   const [data, setData] = useState<Data>();
   const [editor, setEditor] = useState<Editor>();
@@ -73,7 +73,7 @@ export default function FinishingPanel({ api, user }: { api: Api; user: SessionU
   const refresh = useCallback(async () => {
     setError("");
     try {
-      const resources = ["types", "orders", "issues", "glazing", "rounds", "sources", "qc", "stock", "workers"] as const;
+      const resources = ["types", "orders", "issues", "glazing", "rounds", "sources", "qc", "workers"] as const;
       const lists = await Promise.all(resources.map(async key => [key, (await api<{ items: Data[typeof key] }>(`/finishing/${key}`)).items]));
       setData(Object.fromEntries(lists) as Data);
     } catch (cause) {
@@ -83,23 +83,12 @@ export default function FinishingPanel({ api, user }: { api: Api; user: SessionU
 
   useEffect(() => { void refresh(); }, [refresh]);
   const can = (operation: string) => user.permissions.includes(`finishing.${operation}`);
-  const tileName = (id: number, clay: string) => {
-    const tile = data?.types.find(item => item.id === id);
-    return tile ? `${tile.width} × ${tile.length} ดิน${clay}${tile.name ? ` · ${tile.name}` : ""}` : `ประเภท #${id} · ดิน${clay}`;
-  };
+  const tileName = (id: number, clay: string) => finishingTileName(data?.types ?? [], id, clay);
   const orderName = (id: number) => {
     const order = data?.orders.find(item => item.id === id);
     return order ? `ออเดอร์ ${order.customer_reference} · ใบสั่ง #${id}` : `ใบสั่ง #${id}`;
   };
   const orders = data?.orders ?? [];
-  const stock = new Map<string, { type_id: number; clay: string; color_name: string | null; pieces: number }>();
-  for (const receipt of data?.stock ?? []) {
-    if (receipt.voided_at) continue;
-    const key = `${receipt.type_id}:${receipt.clay}:${receipt.color_id ?? ""}`;
-    const total = stock.get(key);
-    if (total) total.pieces += receipt.pieces;
-    else stock.set(key, { type_id: receipt.type_id, clay: receipt.clay, color_name: receipt.color_name, pieces: receipt.pieces });
-  }
   const open = (title: string, path: string, build: Editor["build"], children: ReactNode) =>
     setEditor({ title, path, build, children });
   const number = (form: FormData, key: string, label: string, min = 1) => formInteger(form, key, label, min);
@@ -255,9 +244,7 @@ export default function FinishingPanel({ api, user }: { api: Api; user: SessionU
                 ({ value: order.id, label: `${orderName(order.id)} · ขาด ${count(order.missing_pieces)} แผ่น` }))} />
               <NumberField name="pieces" label="จำนวนแผ่นดี" max={qc.unallocated_pieces} />
             </>))}
-          {can("stock") && qc.stock_available > 0 && action("ยืนยันรับเข้าสต็อก", () => open("ยืนยันรับเข้าสต็อก", "/stock",
-            form => ({ qc_id: qc.id, pieces: number(form, "pieces", "จำนวนแผ่น") }),
-            <NumberField name="pieces" label="จำนวนที่ตรวจแล้ว (แผ่น)" max={qc.stock_available} />))}
+          {qc.stock_available > 0 && action("ไปที่สินค้าสำเร็จ", openFinishedStock)}
           {can("correct") && action("แก้ผลคัด", () => open("แก้ผลคัด QC", "/qc-correction",
             form => ({ qc_id: qc.id, good_pieces: number(form, "good_pieces", "แผ่นดี", 0),
               waste_pieces: number(form, "waste_pieces", "แผ่นเสีย", 0), reason: formText(form, "reason") }),
@@ -288,31 +275,14 @@ export default function FinishingPanel({ api, user }: { api: Api; user: SessionU
         </Card>;
       })}</div>
     </Section>}
-    {data && section === "orders" && <>
+    {data && section === "orders" &&
       <Section title="ยอดพร้อมส่งตามใบสั่ง">
         {!orders.length && <p>ยังไม่มีข้อมูลออเดอร์สำหรับงานผลิต</p>}
         <div className="pressing-cards">{orders.map(order => <Card key={order.id} title={orderName(order.id)}>
           <p>{tileName(order.type_id, order.clay)}{order.color_name && ` · ${order.color_name}`}</p>
           <Facts values={{ "ยอดลูกค้าสั่ง": count(order.customer_pieces), "พร้อมส่ง": count(order.ready_pieces), "ยอดขาด": count(order.missing_pieces) }} />
         </Card>)}</div>
-      </Section>
-      <Section title="สต็อกสินค้าสำเร็จ">
-        {!stock.size && <p>ยังไม่มียอดสินค้าสำเร็จ</p>}
-        <div className="pressing-cards">{[...stock].map(([key, item]) => <Card key={key} title={tileName(item.type_id, item.clay)}>
-          <p>{item.color_name ?? "บรีส"}</p>
-          <Facts values={{ "ยอดรับเข้าสุทธิ (แผ่น)": count(item.pieces) }} />
-        </Card>)}</div>
-      </Section>
-      <Section title="ประวัติรับเข้าสินค้าสำเร็จ">
-        {!data.stock.length && <p>ยังไม่มีรายการรับเข้า</p>}
-        <div className="pressing-cards">{data.stock.map(receipt => <Card key={receipt.id} title={`รับเข้า #${receipt.id} · ${count(receipt.pieces)} แผ่น`}
-          meta={receipt.voided_at && <span className="badge neutral">ย้อนแล้ว</span>}
-          actions={!receipt.voided_at && can("stock") && reverse("ย้อนรายการรับเข้า", "/stock-void", "receipt_id", receipt.id)}>
-          <p>{tileName(receipt.type_id, receipt.clay)} · {receipt.color_name ?? "บรีส"} · ผลคัด #{receipt.qc_id}</p>
-          <p>{receipt.recorded_by_username} · {new Date(receipt.recorded_at).toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })}</p>
-        </Card>)}</div>
-      </Section>
-    </>}
+      </Section>}
     {editor && <FormDialog {...editor} api={api} scope="finishing" keyField="request_id"
       submitLabel="ยืนยันบันทึก" onClose={() => setEditor(undefined)} onStale={refresh} onSaved={async () => {
         setStatus("บันทึกแล้ว");

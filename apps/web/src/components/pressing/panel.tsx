@@ -6,17 +6,14 @@ import type { Api, SessionUser } from "../../lib/types";
 import Inventory from "./inventory";
 import Orders from "./orders";
 import Production from "./production";
-import Sorting from "./sorting";
 import type { PressingActions } from "./shared";
 
 const sections = [
   { id: "orders", label: "ใบสั่งผลิต", Component: Orders },
   { id: "production", label: "บันทึกยอด", Component: Production },
-  { id: "inventory", label: "สต็อกและเบิก", Component: Inventory },
-  { id: "sorting", label: "ผลคัด", Component: Sorting },
 ] as const;
 
-export default function PressingPanel({ api, user }: { api: Api; user: SessionUser }) {
+export default function PressingPanel({ api, user, stockOnly = false }: { api: Api; user: SessionUser; stockOnly?: boolean }) {
   const [section, setSection] = useState<(typeof sections)[number]["id"]>("orders");
   const [data, setData] = useState<PressingData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -32,10 +29,11 @@ export default function PressingPanel({ api, user }: { api: Api; user: SessionUs
       return (await api<{ items: PressingData[K] }>(`/pressing/${path}`)).items;
     };
     try {
-      const [types, orders, workers, entries, stock, issues, jobs, colors] = await Promise.all([
-        list("types"), list("orders"), list("workers"), list("entries"), list("stock"), list("issues"), list("jobs", "kiln-jobs"), list("colors"),
+      const [types, orders, workers, entries, stock, issues, colors] = await Promise.all([
+        list("types"), list("orders"), stockOnly ? [] : list("workers"), stockOnly ? [] : list("entries"),
+        stockOnly ? list("stock") : [], stockOnly ? list("issues") : [], stockOnly ? [] : list("colors"),
       ]);
-      if (latest.current === version) setData({ types, orders, workers, entries, stock, issues, jobs, colors });
+      if (latest.current === version) setData({ types, orders, workers, entries, stock, issues, colors });
     } catch (cause) {
       if (latest.current === version) {
         setError(cause instanceof TypeError ? "เชื่อมต่อเพื่อโหลดข้อมูลงานปั๊มไม่สำเร็จ" :
@@ -44,7 +42,7 @@ export default function PressingPanel({ api, user }: { api: Api; user: SessionUs
     } finally {
       if (latest.current === version) setLoading(false);
     }
-  }, [api]);
+  }, [api, stockOnly]);
 
   useEffect(() => {
     const onFocus = () => void refresh();
@@ -65,11 +63,11 @@ export default function PressingPanel({ api, user }: { api: Api; user: SessionUs
       await refresh();
     },
   };
-  const Component = sections.find((item) => item.id === section)!.Component;
+  const Component = stockOnly ? Inventory : sections.find((item) => item.id === section)!.Component;
   return (
     <div className="pressing-panel">
       <div className="pressing-navigation">
-        <nav aria-label="เมนูงานปั๊ม">
+        {!stockOnly && <nav aria-label="เมนูงานปั๊ม">
           {sections.map((item) => (
             <button key={item.id} className={`button ${section === item.id ? "primary" : "secondary"}`}
               aria-pressed={section === item.id} onClick={() => {
@@ -80,7 +78,7 @@ export default function PressingPanel({ api, user }: { api: Api; user: SessionUs
               {item.label}
             </button>
           ))}
-        </nav>
+        </nav>}
         <button className="button secondary" disabled={loading} onClick={() => {
           setMessage("");
           void refresh();

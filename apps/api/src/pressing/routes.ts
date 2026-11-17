@@ -3,7 +3,6 @@ import { finishingRequest } from '../finishing/requests.js';
 import { fail } from '../auth.js';
 import { all, audit, type Db } from '../database.js';
 import { createOrder, listOrders, listTypes, listWorkers, removeOrder, removeType, saveType, updateOrderTarget } from './catalog.js';
-import { createKilnJob, listKilnJobs, listSortResults, recordSortResult } from './kiln.js';
 import {
   adjustEntry, confirmOpeningReady, editEntry, listEntries, listEntryAdjustments, listIssueReversals,
   listIssues, listStock, recordEntry, recordIssue, recordOpening, releaseSurplus, reverseIssue,
@@ -104,27 +103,9 @@ export async function handlePressingRoute(req: Request, res: Response, access: P
     return true;
   }
 
-  if (method === 'GET' && req.path === '/pressing/kiln-jobs') {
-    access.require('pressing.read');
-    res.json({ items: await listKilnJobs(access.db) });
-    return true;
-  }
-  if (method === 'POST' && req.path === '/pressing/kiln-jobs') {
-    const id = await access.mutate('pressing.sort', (db, actor) => createKilnJob(db, body, actor));
-    res.status(201).json({ id });
-    return true;
-  }
   const resultsMatch = req.path.match(/^\/pressing\/kiln-jobs\/([^/]+)\/results$/);
-  if (method === 'GET' && resultsMatch) {
-    access.require('pressing.read');
-    res.json({ items: await listSortResults(access.db, routeId(resultsMatch[1])) });
-    return true;
-  }
-  if (method === 'POST' && resultsMatch) {
-    const id = await access.mutate('pressing.sort',
-      (db, actor) => recordSortResult(db, routeId(resultsMatch[1]), body, actor));
-    res.status(201).json({ id });
-    return true;
+  if ((method === 'GET' || method === 'POST') && (req.path === '/pressing/kiln-jobs' || resultsMatch)) {
+    fail('ยกเลิกหน้าผลคัดเดิมแล้ว กรุณาใช้งานชุบ เตา และ QC', 410);
   }
 
   const match = req.path.match(/^\/pressing\/(types|orders|workers)(?:\/([^/]+))?$/);
