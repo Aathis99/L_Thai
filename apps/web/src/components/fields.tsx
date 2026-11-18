@@ -36,6 +36,43 @@ export function Field({
   );
 }
 
+export function DigitField({
+  name,
+  label,
+  defaultValue,
+  digits,
+}: Pick<FieldProps, "name" | "label" | "defaultValue"> & { digits: number }) {
+  return (
+    <Field
+      name={name}
+      label={label}
+      defaultValue={defaultValue}
+      inputMode="numeric"
+      maxLength={digits}
+      pattern={`[0-9]{${digits}}`}
+      title={`กรอกตัวเลข ${digits} หลัก หรือเว้นว่าง`}
+      placeholder={`${digits} หลัก หรือเว้นว่าง`}
+      onInput={(event) => {
+        const input = event.currentTarget;
+        const caret = input.selectionStart ?? input.value.length;
+        const position = input.value.slice(0, caret).replace(/[^0-9]/g, "").length;
+        input.value = input.value.replace(/[^0-9]/g, "").slice(0, digits);
+        input.setSelectionRange(position, position);
+      }}
+      onPaste={(event) => {
+        event.preventDefault();
+        const input = event.currentTarget;
+        const start = input.selectionStart ?? input.value.length;
+        const end = input.selectionEnd ?? start;
+        const available = Math.max(0, digits - (input.value.length - (end - start)));
+        const pastedDigits = event.clipboardData.getData("text").replace(/[^0-9]/g, "").slice(0, available);
+        input.setRangeText(pastedDigits, start, end, "end");
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      }}
+    />
+  );
+}
+
 export function SelectField({
   name,
   label,

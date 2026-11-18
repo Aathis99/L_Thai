@@ -11,7 +11,7 @@ import {
   type Records,
   type Role,
 } from "../lib/types";
-import { Field, SelectField, StatusField } from "./fields";
+import { DigitField, Field, SelectField, StatusField } from "./fields";
 
 export type DialogState =
   | { kind: "editor"; view: EditableView; item?: EditableRecord }
@@ -223,23 +223,23 @@ function EditorFields({
             value={employee?.position_id}
             options={records.positions}
           />
-          <Field
+          <DigitField
             name="phone"
             label="เบอร์โทร"
-            defaultValue={employee?.phone}
-            type="tel"
+            defaultValue={employee?.phone?.replace(/[\s()-]/g, "")}
+            digits={10}
           />
-          <Field
+          <DigitField
             name="social_security_number"
             label="เลขประกันสังคม"
             defaultValue={employee?.social_security_number}
-            placeholder="13 หลัก หรือเว้นว่าง"
+            digits={13}
           />
-          <Field
+          <DigitField
             name="taxpayer_id"
             label="เลขประจำตัวประชาชนผู้เสียภาษีอากร"
             defaultValue={employee?.taxpayer_id}
-            placeholder="13 หลัก หรือเว้นว่าง"
+            digits={13}
           />
         </div>
         <StatusField active={employee?.active} />
