@@ -4,6 +4,10 @@
 
 ## สิ่งที่ใช้
 
+สีปุ่มส่วนกลางอยู่ใน `apps/web/src/app/buttons.css` ใช้ `.button.primary` สำหรับเพิ่มหรือสร้าง `.button.success` สำหรับบันทึกหรือยืนยัน `.button.warning` สำหรับแก้ไข ปรับ หรือย้อนยอด `.button.destructive` สำหรับลบหรือหยุดใช้ `.button.secondary` สำหรับคำสั่งรอง และ `.button.tab-selected` สำหรับแท็บที่เลือก FormDialog รับ `intent="warning"` สำหรับการปรับหรือย้อนยอดแบบ POST ได้โดยตรง
+
+โหมดสว่างและมืดใช้ `apps/web/src/app/theme.css` นำเข้าจาก globals.css โดย `html[data-theme]` ควบคุมสี ปุ่ม ThemeToggle จำค่าใน localStorage และ Root Layout โหลดค่าก่อนแสดงหน้า หน้าใหม่ใช้ `bg-display-surface`, `bg-display-raised`, `text-display-text`, `text-display-muted`, `border-display-border` หรือ factory tokens ได้ ใช้ `dark:` สำหรับรูปแบบเฉพาะโหมด สีเดิมใน component CSS มี fallback สำหรับ Light และใช้ตัวแปรสีตามหน้าที่เมื่อเป็น Dark
+
 - `tailwindcss`, `@tailwindcss/postcss`, `postcss` ติดตั้งเป็น devDependencies ของ apps/web
 - `apps/web/postcss.config.mjs` เชื่อม Tailwind เข้ากับ Next.js
 - `apps/web/src/app/globals.css`: import Tailwind, theme tokens และ component layers สำหรับรูปแบบที่ใช้ซ้ำ

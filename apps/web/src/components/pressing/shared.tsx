@@ -133,13 +133,14 @@ function Modal({
 type RequestBody = Record<string, unknown>;
 
 export function FormDialog({
-  api, title, path, scope = "pressing", method = "POST", keyField, submitLabel, submitDisabled, build, onSaved, onClose, onStale, children,
+  api, title, path, scope = "pressing", method = "POST", intent, keyField, submitLabel, submitDisabled, build, onSaved, onClose, onStale, children,
 }: {
   api: Api;
   title: string;
   path: string;
   scope?: "pressing" | "finishing";
   method?: "POST" | "PUT" | "DELETE";
+  intent?: "success" | "warning";
   keyField?: "request_id" | "source_key";
   submitLabel: string;
   submitDisabled?: boolean;
@@ -226,7 +227,7 @@ export function FormDialog({
           <button type="button" className="button secondary" disabled={busy} onClick={dismiss}>
             {pending ? "ปิดเพื่อตรวจสอบรายการ" : uncertain ? "ปิด" : "ยกเลิก"}
           </button>
-          <button type="submit" className={`button ${method === "DELETE" ? "destructive" : "primary"}`} disabled={submitDisabled || busy || (uncertain && !pending)}>
+          <button type="submit" className={`button ${method === "DELETE" ? "destructive" : intent ?? (method === "PUT" ? "warning" : "success")}`} disabled={submitDisabled || busy || (uncertain && !pending)}>
             {busy ? "กำลังบันทึก…" : pending ? "ลองส่งอีกครั้ง" : submitLabel}
           </button>
         </div>

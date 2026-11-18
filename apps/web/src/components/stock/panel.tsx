@@ -18,7 +18,7 @@ export default function StockPanel({ api, user, initialTab }: {
     <div className="pressing-navigation">
       <nav aria-label="เมนูสต็อก">
         {tabs.map(tab => <button key={tab.id}
-          className={`button ${tab.id === active.id ? "primary" : "secondary"}`}
+          className={`button ${tab.id === active.id ? "tab-selected" : "secondary"}`}
           aria-pressed={tab.id === active.id} onClick={() => setSelected(tab.id)}>{tab.label}</button>)}
       </nav>
     </div>

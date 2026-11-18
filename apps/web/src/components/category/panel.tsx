@@ -28,7 +28,7 @@ export default function CategoryPanel({ api, user }: { api: Api; user: SessionUs
       <div className="pressing-navigation">
         <nav aria-label="เมนูหมวดหมู่">
           {tabs.map(tab => (
-            <button key={tab.id} className={`button ${current.id === tab.id ? "primary" : "secondary"}`}
+            <button key={tab.id} className={`button ${current.id === tab.id ? "tab-selected" : "secondary"}`}
               aria-pressed={current.id === tab.id} onClick={() => setSelected(tab.id)}>
               {tab.label}
             </button>

@@ -32,10 +32,10 @@ export default function Orders({ data, actions }: { data: PressingData; actions:
               <Card key={order.id} title={orderName(order)} meta={<span className="badge neutral">{orderPurposes[order.purpose]}</span>}
                 actions={(manage || prepare) && (
                   <>
-                    {manage && order.customer_pieces == null && <button className="button secondary" onClick={() => setEditor({ kind: "target", order })}>แก้ยอดสั่งปั๊ม</button>}
-                    {prepare && order.purpose === "customer" && order.customer_pieces == null && <button className="button secondary" onClick={() => setEditor({ kind: "prepare", order })}>เติมข้อมูลใบค้าง</button>}
+                    {manage && order.customer_pieces == null && <button className="button warning" onClick={() => setEditor({ kind: "target", order })}>แก้ยอดสั่งปั๊ม</button>}
+                    {prepare && order.purpose === "customer" && order.customer_pieces == null && <button className="button warning" onClick={() => setEditor({ kind: "prepare", order })}>เติมข้อมูลใบค้าง</button>}
                     {manage && !orderReferences(order) && (
-                      <button className="button secondary danger" onClick={() => setEditor({ kind: "delete", order })}>ลบใบสั่งผลิต</button>
+                      <button className="button destructive" onClick={() => setEditor({ kind: "delete", order })}>ลบใบสั่งผลิต</button>
                     )}
                   </>
                 )}
@@ -96,6 +96,7 @@ function OrderForm({ types, colors, legacy, ...dialog }: DialogProps & {
   return (
     <FormDialog {...dialog} title={legacy ? "เติมข้อมูลใบสั่งผลิตค้าง" : "เพิ่มใบสั่งผลิต"}
       scope={legacy ? "finishing" : "pressing"} path={legacy ? "/prepare-order" : "/orders"}
+      intent={legacy ? "warning" : "success"}
       keyField="request_id" submitLabel="บันทึกใบสั่งผลิต"
       build={(form) => ({
         ...(legacy ? { order_id: legacy.id } : {

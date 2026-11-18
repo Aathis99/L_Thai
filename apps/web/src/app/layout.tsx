@@ -7,6 +7,22 @@ export const metadata: Metadata = {
   description: 'ระบบทะเบียนพนักงานและสิทธิ์การใช้งานภายในโรงงาน',
 };
 
+const restoreDisplayMode = `
+  try {
+    const savedMode = localStorage.getItem("lthai-display-mode");
+    document.documentElement.dataset.theme = savedMode === "dark" ? "dark" : "light";
+  } catch {
+    document.documentElement.dataset.theme = "light";
+  }
+`;
+
 export default function RootLayout({ children }: { children: ReactNode }) {
-  return <html lang="th"><body>{children}</body></html>;
+  return (
+    <html lang="th" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: restoreDisplayMode }} />
+      </head>
+      <body>{children}</body>
+    </html>
+  );
 }

@@ -50,10 +50,10 @@ export default function Inventory({ data, actions }: { data: PressingData; actio
       <Section title="สต็อกงานปั๊ม" action={(canManage || canIssue) && (
         <div className="pressing-actions">
           {canManage && (
-            <button className="button secondary" disabled={!activeTypes.length} onClick={() => setEditor({ kind: "opening" })}>ลงยอดตั้งต้น</button>
+            <button className="button success" disabled={!activeTypes.length} onClick={() => setEditor({ kind: "opening" })}>ลงยอดตั้งต้น</button>
           )}
           {canIssue && (
-            <button className="button primary" disabled={!readyStock.length} onClick={() => setEditor({ kind: "issue" })}>เบิกสต็อก</button>
+            <button className="button success" disabled={!readyStock.length} onClick={() => setEditor({ kind: "issue" })}>เบิกสต็อก</button>
           )}
         </div>
       )}>
@@ -76,10 +76,10 @@ export default function Inventory({ data, actions }: { data: PressingData; actio
                   actions={(canIssue && awaitingConfirmation || canRelease && source.restricted_pieces > 0) && (
                     <>
                       {canIssue && awaitingConfirmation && (
-                        <button className="button secondary" onClick={() => setEditor({ kind: "ready", source })}>ยืนยันความพร้อมยอดตั้งต้น</button>
+                        <button className="button success" onClick={() => setEditor({ kind: "ready", source })}>ยืนยันความพร้อมยอดตั้งต้น</button>
                       )}
                       {canRelease && source.restricted_pieces > 0 && (
-                        <button className="button secondary" onClick={() => setEditor({ kind: "release", source })}>ปล่อยส่วนเกิน</button>
+                        <button className="button success" onClick={() => setEditor({ kind: "release", source })}>ปล่อยส่วนเกิน</button>
                       )}
                     </>
                   )}
@@ -110,7 +110,7 @@ export default function Inventory({ data, actions }: { data: PressingData; actio
                   actions={
                     <>
                       {canCorrect && (
-                        <button className="button secondary" onClick={() => setEditor({ kind: "reverse", issue })}>ย้อนรายการเบิก</button>
+                        <button className="button warning" onClick={() => setEditor({ kind: "reverse", issue })}>ย้อนรายการเบิก</button>
                       )}
                       <button className="button secondary" onClick={() => setEditor({ kind: "history", issue })}>ประวัติการย้อนเบิก</button>
                     </>
@@ -267,7 +267,7 @@ function IssueForm({
         </div>
       ))}
       <div className="pressing-actions">
-        <button type="button" className="button secondary" disabled={!matchingSources.length} onClick={() => setLines([...lines, nextLine.current++])}>
+        <button type="button" className="button primary" disabled={!matchingSources.length} onClick={() => setLines([...lines, nextLine.current++])}>
           เพิ่มรายการเบิก
         </button>
       </div>
@@ -302,7 +302,7 @@ function IssueFields({ line, sources, orderId, canTransfer }: { line: number; so
 function ReversalForm({ issue, ...dialog }: DialogProps & { issue: StockIssue }) {
   return (
     <FormDialog {...dialog} title={`ย้อนรายการเบิก · ใบเบิก #${issue.id}`} path={`/issues/${issue.id}/reversals`}
-      keyField="request_id" submitLabel="ยืนยันย้อนเบิก"
+      keyField="request_id" intent="warning" submitLabel="ยืนยันย้อนเบิก"
       build={(form) => {
         const lines = issue.lines.filter((line) => formText(form, `line_${line.id}`)).map((line) => ({
           issue_line_id: line.id,

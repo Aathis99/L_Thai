@@ -65,7 +65,7 @@ export default function FinishedStock({ api, canManage }: { api: Api; canManage:
         {!pending.length && <p>ยังไม่มีแผ่นดีส่วนเกินที่พร้อมรับเข้า</p>}
         <div className="pressing-cards">{pending.map(item => <Card key={item.id}
           title={`ผลคัด #${item.id} · รอบเผา #${item.round_id}`}
-          actions={canManage && <button className="button primary" onClick={() => setEditor({ kind: "receive", item })}>
+          actions={canManage && <button className="button success" onClick={() => setEditor({ kind: "receive", item })}>
             ยืนยันรับเข้าสต็อก
           </button>}>
           <p>{tile(item)} · {item.color_name ?? "บรีส"}</p>
@@ -84,7 +84,7 @@ export default function FinishedStock({ api, canManage }: { api: Api; canManage:
         <div className="pressing-cards">{data.receipts.map(item => <Card key={item.id}
           title={`รับเข้า #${item.id} · ${count(item.pieces)} แผ่น`}
           meta={item.voided_at && <span className="badge neutral">ย้อนแล้ว</span>}
-          actions={!item.voided_at && canManage && <button className="button secondary" onClick={() => setEditor({ kind: "reverse", item })}>
+          actions={!item.voided_at && canManage && <button className="button warning" onClick={() => setEditor({ kind: "reverse", item })}>
             ย้อนรายการรับเข้า
           </button>}>
           <p>{tile(item)} · {item.color_name ?? "บรีส"} · ผลคัด #{item.qc_id}</p>
@@ -94,7 +94,7 @@ export default function FinishedStock({ api, canManage }: { api: Api; canManage:
     </>}
     {editor && canManage && <FormDialog api={api} scope="finishing" keyField="request_id"
       title={receiving ? "ยืนยันรับเข้าสต็อก" : "ย้อนรายการรับเข้า"}
-      path={receiving ? "/stock" : "/stock-void"} submitLabel="ยืนยันบันทึก"
+      path={receiving ? "/stock" : "/stock-void"} intent={receiving ? "success" : "warning"} submitLabel="ยืนยันบันทึก"
       build={form => receiving
         ? { qc_id: editor.item.id, pieces: formInteger(form, "pieces", "จำนวนแผ่น", 1) }
         : { receipt_id: editor.item.id, reason: formText(form, "reason") }}

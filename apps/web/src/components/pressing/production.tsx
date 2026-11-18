@@ -22,7 +22,7 @@ export default function Production({ data, actions }: { data: PressingData; acti
 
   return (
     <Section title="รายการปั๊ม" action={canRecord && (
-      <button className="button primary" disabled={!activeOrders.length || !data.workers.length} onClick={() => setEditor({ kind: "record" })}>
+      <button className="button success" disabled={!activeOrders.length || !data.workers.length} onClick={() => setEditor({ kind: "record" })}>
         บันทึกยอดปั๊ม
       </button>
     )}>
@@ -46,8 +46,8 @@ export default function Production({ data, actions }: { data: PressingData; acti
                   <>
                     {canCorrect && (
                       <>
-                        <button className="button secondary" onClick={() => setEditor({ kind: "edit", entry })}>แก้รายการปั๊ม</button>
-                        <button className="button secondary" onClick={() => setEditor({ kind: "adjust", entry })}>ปรับยอดหลังเคลื่อนไหว</button>
+                        <button className="button warning" onClick={() => setEditor({ kind: "edit", entry })}>แก้รายการปั๊ม</button>
+                        <button className="button warning" onClick={() => setEditor({ kind: "adjust", entry })}>ปรับยอดหลังเคลื่อนไหว</button>
                       </>
                     )}
                     <button className="button secondary" onClick={() => setEditor({ kind: "history", entry })}>ประวัติการแก้ยอด</button>
@@ -92,7 +92,7 @@ export default function Production({ data, actions }: { data: PressingData; acti
       )}
       {editor?.kind === "adjust" && canCorrect && (
         <FormDialog {...dialog} title="ปรับยอดหลังเคลื่อนไหว" path={`/entries/${editor.entry.id}/adjustments`}
-          keyField="request_id" submitLabel="บันทึกการปรับยอด"
+          keyField="request_id" intent="warning" submitLabel="บันทึกการปรับยอด"
           build={(form) => ({
             corrected_pieces: formInteger(form, "corrected_pieces", "ยอดหลังปรับ", 0),
             reason: formText(form, "reason"),

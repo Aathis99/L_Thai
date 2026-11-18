@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import ThemeToggle from "./theme-toggle";
 import { Brand, Field } from "./fields";
 import type { Api } from "../lib/types";
 
@@ -72,6 +73,7 @@ export default function Auth({
         </div>
       </section>
       <section className="auth-form">
+        <div className="auth-theme-toggle"><ThemeToggle /></div>
         <div className="login-box w-full max-w-[360px]">
           <span className="section-tag">PEOPLE &amp; ACCESS</span>
           <h2>{setup ? "เริ่มต้นระบบของคุณ" : "ยินดีต้อนรับกลับ"}</h2>

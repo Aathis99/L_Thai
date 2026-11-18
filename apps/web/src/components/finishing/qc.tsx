@@ -33,7 +33,7 @@ export default function QcPage({ api, user, initialRoundId, openFinishedStock }:
                     label={`#${load.id} · ${orderName(load.order_id)} · ${tileName(load.type_id, load.clay)} · ${load.color_name ?? "บรีส"} · เหลือ ${count(load.unsorted_pieces)}`} />)}
                   <NumberField name="good_pieces" label="แผ่นดี" min={0} />
                   <NumberField name="waste_pieces" label="แผ่นเสีย" min={0} />
-                </>))}>
+                </>, "success"), "success")}>
             <p>เผาเสร็จ {round.finished_on}</p>
             <Facts values={{ "รอคัด (แผ่น)": count(pending.reduce((sum, load) => sum + load.unsorted_pieces, 0)) }} />
             <ul>{pending.map(load => <li key={load.id}>
@@ -53,8 +53,8 @@ export default function QcPage({ api, user, initialRoundId, openFinishedStock }:
                 <Choice label="ใบสั่งผลิต" name="order_id" options={eligible.map(order =>
                   ({ value: order.id, label: `${orderName(order.id)} · ขาด ${count(order.missing_pieces)} แผ่น` }))} />
                 <NumberField name="pieces" label="จำนวนแผ่นดี" max={qc.unallocated_pieces} />
-              </>))}
-            {qc.stock_available > 0 && action("ไปที่สินค้าสำเร็จ", openFinishedStock)}
+              </>, "success"), "success")}
+            {qc.stock_available > 0 && action("ไปที่สินค้าสำเร็จ", openFinishedStock, "secondary")}
             {can("correct") && action("แก้ผลคัด", () => open("แก้ผลคัด QC", "/qc-correction",
               form => ({ qc_id: qc.id, good_pieces: number(form, "good_pieces", "แผ่นดี", 0),
                 waste_pieces: number(form, "waste_pieces", "แผ่นเสีย", 0), reason: formText(form, "reason") }),
@@ -62,7 +62,7 @@ export default function QcPage({ api, user, initialRoundId, openFinishedStock }:
                 <NumberField name="good_pieces" label="แผ่นดี" min={0} defaultValue={qc.good_pieces} />
                 <NumberField name="waste_pieces" label="แผ่นเสีย" min={0} defaultValue={qc.waste_pieces} />
                 <Field name="reason" label="เหตุผลที่แก้ผลคัด" required />
-              </>))}
+              </>, "warning"), "warning")}
             {can("correct") && !qc.allocated_pieces && !qc.stocked_pieces &&
               reverse("ยกเลิกผลคัด", "/qc-void", "qc_id", qc.id)}
           </>}>

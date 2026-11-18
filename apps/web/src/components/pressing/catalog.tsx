@@ -25,8 +25,8 @@ export default function Catalog({ data, actions }: {
                 meta={<span className={`badge ${tile.active ? "good" : "neutral"}`}>{tile.active ? "ใช้งาน" : "หยุดใช้แล้ว"}</span>}
                 actions={manage && tile.active && (
                   <>
-                    <button className="button secondary" onClick={() => setEditor({ kind: "type", tile })}>แก้ไขประเภท</button>
-                    <button className="button secondary danger" onClick={() => setEditor({ kind: "retire", tile })}>หยุดใช้ประเภท</button>
+                    <button className="button warning" onClick={() => setEditor({ kind: "type", tile })}>แก้ไขประเภท</button>
+                    <button className="button destructive" onClick={() => setEditor({ kind: "retire", tile })}>หยุดใช้ประเภท</button>
                   </>
                 )}
               >

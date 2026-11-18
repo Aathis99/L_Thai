@@ -167,7 +167,7 @@ export default function Dialog({
             ยกเลิก
           </button>
           <button
-            className={`button ${state.kind === "delete" ? "destructive" : "primary"}`}
+            className={`button ${state.kind === "delete" ? "destructive" : "success"}`}
             disabled={busy}
           >
             {busy

@@ -1,0 +1,48 @@
+/* Action colors shared by every module. */
+:root {
+  --button-create: #245bb5;
+  --button-confirm: #237044;
+  --button-warning: #8a5700;
+  --button-danger: #b33d3d;
+  --button-on-color: #ffffff;
+  --button-neutral: #edf0f4;
+  --button-on-neutral: #344054;
+  --button-selected: #e8f0ff;
+  --button-on-selected: #245bb5;
+  --button-warning-text: #8a5700;
+  --button-danger-text: #b33d3d;
+}
+
+:root[data-theme="dark"] {
+  --button-create: #8ab4f8;
+  --button-confirm: #81c995;
+  --button-warning: #d9b56f;
+  --button-danger: #e89595;
+  --button-on-color: #16181b;
+  --button-neutral: #2a2e34;
+  --button-on-neutral: #e4e7eb;
+  --button-selected: #26364d;
+  --button-on-selected: #a8c7fa;
+  --button-warning-text: #d9b56f;
+  --button-danger-text: #e89595;
+}
+
+.button.primary { background: var(--button-create); color: var(--button-on-color); }
+.button.success { background: var(--button-confirm); color: var(--button-on-color); }
+.button.warning { background: var(--button-warning); color: var(--button-on-color); }
+.button.destructive { background: var(--button-danger); color: var(--button-on-color); }
+.button.secondary { background: var(--button-neutral); color: var(--button-on-neutral); }
+.button.secondary.danger { color: var(--button-danger-text); }
+.button.tab-selected,
+.nav-item.selected { background: var(--button-selected); color: var(--button-on-selected); }
+
+.button:hover:not(:disabled) { filter: brightness(0.94); }
+.button.primary:hover { background: var(--button-create); color: var(--button-on-color); }
+.button.secondary:hover { background: var(--button-neutral); }
+.table-button.warning { color: var(--button-warning-text); }
+.table-button.danger,
+.pressing-actions .danger { color: var(--button-danger-text); }
+.button:focus-visible,
+.table-button:focus-visible,
+.nav-item:focus-visible { outline: 2px solid var(--button-create); outline-offset: 3px; }
+button:disabled { cursor: not-allowed; }

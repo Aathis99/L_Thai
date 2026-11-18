@@ -34,11 +34,11 @@ export default function GlazingPage({ api, user }: { api: Api; user: SessionUser
                     <NumberField name="pressing_waste" label="ปั๊มเสีย (แผ่น)" min={0} defaultValue={0} />
                     <NumberField name="glazing_waste" label="ชุบเสีย (แผ่น)" min={0} defaultValue={0} />
                     <NumberField name="good_pieces" label="ดีพร้อมเผา (แผ่น)" min={0} />
-                  </>))
+                  </>, "success"), "success")
                   : !issue.finishing_ready && issue.customer_pieces && can("prepare")
                     ? action("ยืนยันยอดใบเบิกค้าง", () => open("ยืนยันยอดใบเบิกค้าง", "/confirm-issue",
                       form => ({ issue_id: issue.id, pieces: number(form, "pieces", "ยอดค้างที่ตรวจแล้ว") }),
-                      <NumberField name="pieces" label="ยอดค้างที่ตรวจแล้ว (แผ่น)" max={issue.net_pieces} />)) : undefined
+                      <NumberField name="pieces" label="ยอดค้างที่ตรวจแล้ว (แผ่น)" max={issue.net_pieces} />, "success"), "success") : undefined
               }>
               <p>{tileName(issue.type_id, issue.clay)} · {issue.color_name ?? "รอระบุสีเคลือบ"}</p>
               <Facts values={{ "ยอดเบิกสุทธิ": count(issue.net_pieces),
@@ -62,7 +62,7 @@ export default function GlazingPage({ api, user }: { api: Api; user: SessionUser
               <NumberField name="glazing_waste" label="ชุบเสีย" min={0} defaultValue={batch.glazing_waste} />
               <NumberField name="good_pieces" label="ดีพร้อมเผา" min={0} defaultValue={batch.good_pieces} />
               <Field name="reason" label="เหตุผลที่แก้ยอด" required />
-            </>))}>
+            </>, "warning"), "warning")}>
             <p>{batch.worked_on} · ใบเบิก #{batch.issue_id} · {batch.workers.join(", ")}</p>
             <Facts values={{ "จำนวนแผ่นในชุด": count(batch.pieces), "ปั๊มเสีย": count(batch.pressing_waste),
               "ชุบเสีย": count(batch.glazing_waste), "ดีพร้อมเผา": count(batch.good_pieces),

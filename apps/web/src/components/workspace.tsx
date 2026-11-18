@@ -7,6 +7,7 @@ import FiringPage from "./finishing/firing";
 import GlazingPage from "./finishing/glazing";
 import QcPage from "./finishing/qc";
 import Dialog, { type DialogState } from "./dialog";
+import ThemeToggle from "./theme-toggle";
 import { Brand } from "./fields";
 import PressingPanel from "./pressing/panel";
 import RecordTable from "./record-table";
@@ -378,6 +379,7 @@ export default function Workspace() {
               >
                 ออกจากระบบ
               </button>
+              <ThemeToggle />
             </div>
           </header>
           <main className="main">

@@ -25,14 +25,14 @@ export type Data = {
   types: FinishingTile[]; orders: Order[]; issues: Issue[]; glazing: Batch[]; rounds: Round[]; sources: Source[];
   qc: Qc[]; workers: { id: number; code: string; name: string }[];
 };
-type Editor = Pick<ComponentProps<typeof FormDialog>, "title" | "path" | "build" | "children">;
+type Editor = Pick<ComponentProps<typeof FormDialog>, "title" | "path" | "build" | "children" | "intent">;
 type Common = "types" | "orders";
 
 export interface FinishingActions {
   tileName: (id: number, clay: string) => string;
   orderName: (id: number) => string;
   can: (permission: string) => boolean;
-  open: (title: string, path: string, build: Editor["build"], children: ReactNode) => void;
+  open: (title: string, path: string, build: Editor["build"], children: ReactNode, intent?: Editor["intent"]) => void;
   reverse: (label: string, path: string, key: string, id: number) => ReactNode;
 }
 
@@ -46,8 +46,8 @@ export function DateField({ name, label, min }: { name: string; label: string; m
   return <Field name={name} label={label} type="date" min={min} defaultValue={bangkokDate()} required />;
 }
 
-export function action(label: string, onClick: () => void) {
-  return <button className="button secondary" onClick={onClick}>{label}</button>;
+export function action(label: string, onClick: () => void, intent: "primary" | "success" | "warning" | "destructive" | "secondary" = "secondary") {
+  return <button className={`button ${intent}`} onClick={onClick}>{label}</button>;
 }
 
 export const number = formInteger;
@@ -85,9 +85,9 @@ export default function FinishingPage<K extends keyof Data>({ api, user, resourc
     };
   }, [refresh]);
 
-  const open: FinishingActions["open"] = (title, path, build, children) => {
+  const open: FinishingActions["open"] = (title, path, build, children, intent = "success") => {
     setStatus("");
-    setEditor({ title, path, build, children });
+    setEditor({ title, path, build, children, intent });
   };
   const actions: FinishingActions = {
     tileName: (id, clay) => finishingTileName(data?.types ?? [], id, clay),
@@ -99,12 +99,12 @@ export default function FinishingPage<K extends keyof Data>({ api, user, resourc
     open,
     reverse: (label, path, key, id) => action(label, () =>
       open(label, path, form => ({ [key]: id, reason: formText(form, "reason") }),
-        <><p>รายการ #{id}</p><Field name="reason" label="เหตุผล" required /></>)),
+        <><p>รายการ #{id}</p><Field name="reason" label="เหตุผล" required /></>, "warning"), "warning"),
   };
 
   return <div className="pressing-panel">
     <div className="pressing-navigation">
-      {action("โหลดรายการใหม่", () => void refresh())}
+      {action("โหลดรายการใหม่", () => void refresh(), "secondary")}
     </div>
     {error && <p className="error-banner" role="alert">{error}</p>}
     <p role="status">{status || (!data && !error ? "กำลังโหลดข้อมูลงานผลิต…" : "")}</p>

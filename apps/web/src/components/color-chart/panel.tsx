@@ -130,7 +130,7 @@ function ChartDialog({ api, item, canManage, version, refreshError, onRetryRefre
             </label>
             {!item && <p className="chart-status">เพิ่มภาพตัวอย่างได้หลังบันทึกชื่อ</p>}
             <div className="chart-actions">
-              <button type="submit" className="button primary" disabled={busy}>{busy ? "กำลังบันทึก…" : "บันทึก"}</button>
+              <button type="submit" className="button success" disabled={busy}>{busy ? "กำลังบันทึก…" : "บันทึก"}</button>
               <button type="button" className="button secondary" disabled={busy} onClick={() => {
                 setError("");
                 if (item) setEditing(false);
@@ -156,11 +156,11 @@ function ChartDialog({ api, item, canManage, version, refreshError, onRetryRefre
                     event.currentTarget.value = "";
                     if (file) void change({ kind: "upload-image" }, "PUT", "/image", file);
                   }} />
-                  <button type="button" className="button secondary" disabled={busy} onClick={() => fileInput.current?.click()}>
+                  <button type="button" className={`button ${item.has_image ? "warning" : "primary"}`} disabled={busy} onClick={() => fileInput.current?.click()}>
                     {item.has_image ? "เปลี่ยนภาพ" : "เพิ่มภาพ"}
                   </button>
                   {item.has_image && (
-                    <button type="button" className="button secondary danger" disabled={busy} onClick={() => void change({ kind: "delete-image" }, "DELETE", "/image")}>
+                    <button type="button" className="button destructive" disabled={busy} onClick={() => void change({ kind: "delete-image" }, "DELETE", "/image")}>
                       ลบภาพ
                     </button>
                   )}
@@ -173,12 +173,12 @@ function ChartDialog({ api, item, canManage, version, refreshError, onRetryRefre
       </div>
       {item && canManage && !editing && (
         <div className="modal-foot">
-          <button type="button" className="button secondary" disabled={busy} onClick={() => {
+          <button type="button" className="button warning" disabled={busy} onClick={() => {
             setError("");
             setMessage("");
             setEditing(true);
           }}>แก้ชื่อและหมายเหตุ</button>
-          <button type="button" className="button secondary danger" disabled={busy} onClick={remove}>ลบรายการ</button>
+          <button type="button" className="button destructive" disabled={busy} onClick={remove}>ลบรายการ</button>
         </div>
       )}
     </dialog>

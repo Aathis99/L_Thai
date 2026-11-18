@@ -53,7 +53,7 @@ export default function RecordTable({
     return (
       <div className="flex gap-[9px] whitespace-nowrap">
         {editable && (
-          <button className="table-button" onClick={() => onEdit(item)}>
+          <button className="table-button warning" onClick={() => onEdit(item)}>
             แก้ไข<span className="sr-only"> {item.name}</span>
           </button>
         )}
@@ -231,7 +231,7 @@ export default function RecordTable({
                   : "รายการจะปรากฏที่นี่เมื่อเริ่มใช้งาน"}
           </p>
           {!filtered && creatable && (
-            <button className="button secondary" onClick={onCreate}>
+            <button className="button primary" onClick={onCreate}>
               ＋ เพิ่ม{view === "roles" ? "บทบาท" : labels[view]}
             </button>
           )}

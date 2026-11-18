@@ -22,7 +22,7 @@ export default function TemperatureRanges({ data, api, user, onSaved }: Category
   const canSetRange = user.permissions.includes("finishing.temperature");
   return <>
     <Section title="ช่วงอุณหภูมิเผา" action={canSetRange && (
-      <button className="button secondary" onClick={() => {
+      <button className="button warning" onClick={() => {
         setKind("clay");
         setEditing(true);
       }}>ตั้งช่วงอุณหภูมิ</button>
@@ -34,7 +34,7 @@ export default function TemperatureRanges({ data, api, user, onSaved }: Category
       </Card>)}</div>
     </Section>
     {editing && canSetRange && <FormDialog api={api} scope="finishing" path="/ranges" title="ตั้งช่วงอุณหภูมิ"
-      submitLabel="ยืนยันบันทึก" onClose={() => setEditing(false)} onSaved={onSaved} build={form => ({
+      intent="warning" submitLabel="ยืนยันบันทึก" onClose={() => setEditing(false)} onSaved={onSaved} build={form => ({
         ...(formText(form, "kind") === "color"
           ? { color_id: formInteger(form, "color_id", "สีเคลือบ") }
           : { clay: formText(form, "clay") }),

@@ -1,0 +1,78 @@
+/* Shared display surfaces. Existing light colors use their local fallbacks. */
+:root {
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-display-surface: var(--surface, #ffffff);
+  --color-display-raised: var(--surface-raised, #f2f5f0);
+  --color-display-text: var(--text-main, #263c35);
+  --color-display-muted: var(--text-muted, #60736a);
+  --color-display-border: var(--border, #e7ebe5);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-factory-ink: #e4e7eb;
+  --color-factory-paper: #16181b;
+  --color-factory-green: #8ab4f8;
+  --color-factory-deep: #abcaff;
+  --color-factory-muted: #aeb6c2;
+  --color-factory-line: #414750;
+  --color-factory-clay: #e7b18b;
+  --surface: #202327;
+  --surface-raised: #2a2e34;
+  --surface-deep: #191c20;
+  --border: #414750;
+  --focus: #8ab4f8;
+  --text-main: #e4e7eb;
+  --text-muted: #aeb6c2;
+  --on-primary: #16181b;
+  --danger-solid: #93483e;
+  --danger-soft: #3d2828;
+  --danger-text: #f4aaa0;
+  --warning-text: #e8c58c;
+}
+
+@layer components {
+  .theme-toggle {
+    display: inline-grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border: 1px solid var(--color-factory-line);
+    border-radius: 8px;
+    margin-inline-start: 8px;
+    background: transparent;
+    color: var(--color-factory-ink);
+  }
+  .theme-toggle:hover { background: var(--surface-raised, #edf2ec); }
+  .theme-toggle:focus-visible { outline: 2px solid var(--focus, #739582); }
+  .theme-moon { display: none; }
+  [data-theme="dark"] .theme-sun { display: none; }
+  [data-theme="dark"] .theme-moon { display: block; }
+  .auth-theme-toggle { position: absolute; top: 16px; right: 20px; }
+  .auth-theme-toggle .theme-toggle { background: var(--surface, #fcfcf9); }
+}
+
+/* Intentional contrasts and statuses shared by every module. */
+[data-theme="dark"] .auth-story {
+  background: #191c20;
+  color: var(--text-main);
+}
+[data-theme="dark"] .brand-mark { color: #e4e7eb; }
+[data-theme="dark"] .primary:hover { color: #16181b; }
+[data-theme="dark"] .field input,
+[data-theme="dark"] .field select,
+[data-theme="dark"] .field textarea,
+[data-theme="dark"] select#filter { background: #191c20; }
+[data-theme="dark"] .good { background: #21392d; color: #a1d9b4; }
+[data-theme="dark"] .muted-badge { background: #3b3324; color: #e8c58c; }
+[data-theme="dark"] .neutral { background: #30343b; color: #c4cbd5; }
+
+@media (max-width: 760px) {
+  .topbar { height: auto; min-height: 52px; flex-wrap: wrap; padding-block: 6px; }
+  .topbar-right { margin-inline-start: auto; }
+  .auth-theme-toggle { position: fixed; top: 10px; right: 12px; z-index: 2; }
+}

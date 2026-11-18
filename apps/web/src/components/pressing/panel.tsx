@@ -69,7 +69,7 @@ export default function PressingPanel({ api, user, stockOnly = false }: { api: A
       <div className="pressing-navigation">
         {!stockOnly && <nav aria-label="เมนูงานปั๊ม">
           {sections.map((item) => (
-            <button key={item.id} className={`button ${section === item.id ? "primary" : "secondary"}`}
+            <button key={item.id} className={`button ${section === item.id ? "tab-selected" : "secondary"}`}
               aria-pressed={section === item.id} onClick={() => {
                 setMessage("");
                 setSection(item.id);

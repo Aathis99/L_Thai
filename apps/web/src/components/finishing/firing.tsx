@@ -19,7 +19,7 @@ export default function FiringPage({ api, user, openQc }: { api: Api; user: Sess
             actions={issue.customer_pieces && can("prepare") ? action("ยืนยันยอดใบเบิกค้าง", () =>
               open("ยืนยันยอดใบเบิกค้าง", "/confirm-issue",
                 form => ({ issue_id: issue.id, pieces: number(form, "pieces", "ยอดค้างที่ตรวจแล้ว") }),
-                <NumberField name="pieces" label="ยอดค้างที่ตรวจแล้ว (แผ่น)" max={issue.net_pieces} />)) : undefined}>
+                <NumberField name="pieces" label="ยอดค้างที่ตรวจแล้ว (แผ่น)" max={issue.net_pieces} />, "success"), "success") : undefined}>
             <p>{tileName(issue.type_id, issue.clay)}</p>
             <Facts values={{ "ยอดเบิกสุทธิ": count(issue.net_pieces) }} />
             <p>{issue.customer_pieces ? "รอตรวจยืนยันใบเบิกค้าง" : "รอเติมข้อมูลใบสั่งผลิต"}</p>
@@ -41,7 +41,7 @@ export default function FiringPage({ api, user, openQc }: { api: Api; user: Sess
             <Field name="kiln" label="ชื่อหรือหมายเลขเตา" required />
             <NumberField name="temperature" label="อุณหภูมิที่ตั้ง (°C)" />
             <DateField name="started_on" label="วันที่เข้าเตา" />
-          </>))}>
+          </>, "success"), "primary")}>
           {!data.rounds.length && <p>ยังไม่มีรอบเผา</p>}
           <div className="pressing-cards">{data.rounds.map(round => {
             const compatible = data.sources.filter(source => source.waiting_pieces > 0 && rangeMatches(source, round));
@@ -53,11 +53,11 @@ export default function FiringPage({ api, user, openQc }: { api: Api; user: Sess
                 {compatible.length > 0 && action("ยืนยันแผ่นเข้าเตา", () => open("ยืนยันแผ่นเข้าเตา", "/loads", form => {
                   const source = compatible[number(form, "source", "งานรอเผา", 0)];
                   return { round_id: round.id, batch_id: source.batch_id, issue_id: source.issue_id, pieces: number(form, "pieces", "จำนวนแผ่น") };
-                }, <LoadForm sources={compatible} />))}
+                }, <LoadForm sources={compatible} />, "success"), "success")}
                 {hasPieces && action("บันทึกเผาเสร็จ", () => open("บันทึกเผาเสร็จ", "/finish",
                   form => ({ round_id: round.id, finished_on: formText(form, "finished_on") }),
-                  <DateField name="finished_on" label="วันที่เผาเสร็จ" min={round.started_on} />))}
-              </> : pending.length > 0 && action("ไปคัด QC", () => openQc(round.id))}>
+                  <DateField name="finished_on" label="วันที่เผาเสร็จ" min={round.started_on} />, "success"), "success")}
+              </> : pending.length > 0 && action("ไปคัด QC", () => openQc(round.id), "secondary")}>
               <p>เข้าเตา {round.started_on}{round.finished_on && ` · เผาเสร็จ ${round.finished_on}`}</p>
               {!round.finished_on && !compatible.length && <p>ไม่มีงานรอเผาที่พร้อมลงรอบอุณหภูมินี้</p>}
               {round.loads.length > 0 && <ul>{round.loads.map(load => <li key={load.id}>
@@ -69,7 +69,7 @@ export default function FiringPage({ api, user, openQc }: { api: Api; user: Sess
                   }), <>
                     <NumberField name="pieces" min={load.pieces - load.unsorted_pieces} label="จำนวนแผ่นเข้าเตา" defaultValue={load.pieces} />
                     <Field name="reason" label="เหตุผลที่แก้ยอด" required />
-                  </>))}</div>}
+                  </>, "warning"), "warning")}</div>}
               </li>)}</ul>}
             </Card>;
           })}</div>
