@@ -7,6 +7,8 @@ import {
   entryFormValues,
   openingStockPayload,
   pressingEntryPayload,
+  workerName,
+  type PressingData,
   type ProductionOrder,
   type TileType,
 } from "../src/lib/pressing.ts";
@@ -20,6 +22,19 @@ const tile: TileType = {
   pieces_per_rack: 2, rest_days: 1, destination: "kiln", pieces_per_sqm: null, active: true,
 };
 const catalog = { orders: [order], types: [{ ...tile, id: 3, pieces_per_rack: 1 }, tile] };
+
+test("worker labels compose structured names and retain historical entry fallback", () => {
+  const data: PressingData = {
+    colors: [], types: [], orders: [], stock: [], issues: [],
+    workers: [{ id: 19, code: "E019", prefix: "Dr.", first_name: "Jean Pierre", last_name: "de la Cruz" }],
+    entries: [{ id: 1, order_id: 7, employee_id: 20, employee_name: "สมใจ เก่า", pressed_on: "2026-11-11",
+      full_racks: 1, loose_pieces: 0, note: null, ready_on: "2026-11-12", pieces: 2, original_pieces: 2,
+      pieces_per_rack: 2, square_meters: null, recorded_by_username: "office", recorded_at: "2026-11-11T01:00:00Z" }],
+  };
+  assert.equal(workerName(data, 19), "Dr. Jean Pierre de la Cruz");
+  assert.equal(workerName(data, 20), "สมใจ เก่า");
+  assert.equal(workerName(data, 21), "พนักงาน #21");
+});
 
 function entryForm() {
   const form = new FormData();

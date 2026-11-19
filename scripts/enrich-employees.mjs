@@ -16,8 +16,8 @@ try{
     for(const row of payload.rows){
       if(!Number.isInteger(row.serial)||row.serial<1||row.serial>36||!/^([0-9]{13})?$/.test(row.taxpayer_id))throw new Error('Invalid source record');
       const oldCode=`EMP69-${String(row.serial).padStart(3,'0')}`,newCode=`emp${String(row.serial).padStart(3,'0')}`;
-      const existing=(await client.query('SELECT id,name,taxpayer_id FROM employees WHERE code=$1',[oldCode])).rows[0];
-      if(!existing||existing.name!==row.name)throw new Error('Employee mapping changed; no changes applied');
+      const existing=(await client.query("SELECT id,concat_ws(' ',nullif(prefix,''),first_name,nullif(last_name,'')) AS name,taxpayer_id FROM employees WHERE code=$1",[oldCode])).rows[0];
+      if(!existing||existing.name.replace(/\s+/gu,'')!==row.name.replace(/\s+/gu,''))throw new Error('Employee mapping changed; no changes applied');
       if(existing.taxpayer_id&&existing.taxpayer_id!==row.taxpayer_id)throw new Error('Existing identifier conflict');
       await client.query('UPDATE employees SET code=$1,taxpayer_id=$2,updated_at=now() WHERE id=$3',[newCode,row.taxpayer_id,existing.id]);
     }

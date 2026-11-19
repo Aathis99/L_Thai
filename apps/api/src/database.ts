@@ -61,10 +61,16 @@ export async function transaction<T>(pool:pg.Pool,work:(db:pg.PoolClient)=>Promi
 }
 export async function migrate(pool:pg.Pool){
   await transaction(pool,async db=>{
+    if (await one(db, `SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('employees')
+      AND attname='name' AND NOT attisdropped`))
+      throw new Error('employees.name requires an explicit reviewed name-parts upgrade mapping before startup');
     await db.query(`
       CREATE TABLE IF NOT EXISTS roles(id SERIAL PRIMARY KEY,name TEXT NOT NULL UNIQUE,permissions TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS positions(id SERIAL PRIMARY KEY,name TEXT NOT NULL UNIQUE);
-      CREATE TABLE IF NOT EXISTS employees(id SERIAL PRIMARY KEY,code TEXT NOT NULL,name TEXT NOT NULL,department TEXT NOT NULL DEFAULT '',
+      CREATE TABLE IF NOT EXISTS employees(id SERIAL PRIMARY KEY,code TEXT NOT NULL,
+        prefix TEXT NOT NULL DEFAULT '' CONSTRAINT employee_prefix_length CHECK(char_length(prefix)<=40),
+        first_name TEXT NOT NULL CONSTRAINT employee_first_name_length CHECK(btrim(first_name)<>'' AND char_length(first_name)<=120),
+        last_name TEXT NOT NULL DEFAULT '' CONSTRAINT employee_last_name_length CHECK(char_length(last_name)<=120),department TEXT NOT NULL DEFAULT '',
         position_id INTEGER REFERENCES positions(id),phone TEXT NOT NULL DEFAULT '',active INTEGER NOT NULL DEFAULT 1 CHECK(active IN(0,1)),
         archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN(0,1)),created_at TIMESTAMPTZ NOT NULL DEFAULT now(),updated_at TIMESTAMPTZ NOT NULL DEFAULT now());
       CREATE UNIQUE INDEX IF NOT EXISTS employees_code_unique ON employees(lower(code));

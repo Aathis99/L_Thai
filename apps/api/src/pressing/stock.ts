@@ -19,7 +19,8 @@ export function listEntries(db: Db, orderId?: number) {
     to_char(s.ready_on,'YYYY-MM-DD') AS ready_on,
     CASE WHEN e.effective_pieces=e.pieces THEN e.square_meters
       ELSE e.effective_pieces/e.pieces_per_sqm END AS square_meters,
-    e.employee_id,w.name AS employee_name,e.recorded_by,u.username AS recorded_by_username,e.recorded_at
+    e.employee_id,concat_ws(' ',nullif(w.prefix,''),nullif(w.first_name,''),nullif(w.last_name,'')) AS employee_name,
+    e.recorded_by,u.username AS recorded_by_username,e.recorded_at
     FROM pressing_effective_entries e JOIN pressing_stock_sources s ON s.entry_id=e.id
     JOIN employees w ON w.id=e.employee_id JOIN users u ON u.id=e.recorded_by
     ${orderId === undefined ? '' : 'WHERE e.order_id=$1'} ORDER BY e.id`,

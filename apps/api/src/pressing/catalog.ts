@@ -173,5 +173,5 @@ export async function removeOrder(db: Db, id: number): Promise<string> {
 }
 
 export function listWorkers(db: Db) {
-  return all(db, 'SELECT id,code,name FROM employees WHERE active=1 AND archived=0 ORDER BY code,id');
+  return all(db, 'SELECT id,code,prefix,first_name,last_name FROM employees WHERE active=1 AND archived=0 ORDER BY code,id');
 }

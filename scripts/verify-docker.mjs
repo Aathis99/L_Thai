@@ -1,5 +1,5 @@
 import {loadEnvFile} from 'node:process';
-import {createHash} from 'node:crypto';
+import {hashRows} from './lib/row-hash.mjs';
 import pg from 'pg';
 loadEnvFile(new URL('../.env',import.meta.url));
 const native=new pg.Pool({connectionString:process.env.DATABASE_URL});
@@ -10,8 +10,7 @@ try{
   for(const table of ['employees','users','roles','positions','audit']){
     const left=(await native.query(`SELECT * FROM ${table} ORDER BY id`)).rows;
     const right=(await docker.query(`SELECT * FROM ${table} ORDER BY id`)).rows;
-    const hash=rows=>createHash('sha256').update(JSON.stringify(rows)).digest('hex');
-    if(hash(left)!==hash(right))throw new Error(`Docker snapshot differs: ${table} (values withheld)`);
+    if(hashRows(left)!==hashRows(right))throw new Error(`Docker snapshot differs: ${table} (values withheld)`);
     result[table]=left.length;
   }
   console.log(JSON.stringify({snapshotMatchesNative:true,counts:result}));

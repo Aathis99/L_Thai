@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { editorPayload, type EditableView } from "../lib/model";
+import { customEmployeePrefix, employeePrefixSelection, formatEmployeeName, standardEmployeePrefixes } from "../lib/employee-names";
 import {
   labels,
   type Account,
@@ -135,7 +136,7 @@ export default function Dialog({
           ) : state.kind === "delete" ? (
             <>
               <p>
-                ต้องการลบ <strong>{state.item.name}</strong> ใช่หรือไม่?
+                ต้องการลบ <strong>{"first_name" in state.item ? formatEmployeeName(state.item) : state.item.name}</strong> ใช่หรือไม่?
               </p>
               <p className="helper">
                 {state.view === "employees"
@@ -206,12 +207,7 @@ function EditorFields({
             defaultValue={employee?.code}
             required
           />
-          <Field
-            name="name"
-            label="ชื่อ–นามสกุล"
-            defaultValue={employee?.name}
-            required
-          />
+          <EmployeeNameFields employee={employee} />
           <Field
             name="department"
             label="แผนก"
@@ -256,7 +252,7 @@ function EditorFields({
         <Field
           name="name"
           label="ชื่อตำแหน่งงาน"
-          defaultValue={item?.name}
+          defaultValue={item && "name" in item ? item.name : undefined}
           required
         />
         <p className="helper">
@@ -270,16 +266,18 @@ function EditorFields({
       .filter((employee) => !employee.archived)
       .map((employee) => ({
         id: employee.id,
-        name: `${employee.code} · ${employee.name}`,
+        name: `${employee.code} · ${formatEmployeeName(employee)}`,
       }));
     if (
       account?.employee_id &&
       !employees.some((employee) => employee.id === account.employee_id)
-    )
+    ) {
+      const linked = records.employees.find(employee => employee.id === account.employee_id);
       employees.push({
         id: account.employee_id,
-        name: `พนักงาน #${account.employee_id}`,
+        name: linked ? `${linked.code} · ${formatEmployeeName(linked)}` : `พนักงาน #${account.employee_id}`,
       });
+    }
     return (
       <>
         <div className="form-grid">
@@ -356,4 +354,28 @@ function EditorFields({
       </p>
     </>
   );
+}
+
+function EmployeeNameFields({ employee }: { employee?: Employee }) {
+  const [selection, setSelection] = useState(() => employeePrefixSelection(employee?.prefix ?? ""));
+  const [customPrefix, setCustomPrefix] = useState(() =>
+    selection === customEmployeePrefix ? employee?.prefix ?? "" : "");
+  return <>
+    <label className="field">
+      <span>คำนำหน้า</span>
+      <select name="prefix_selection" value={selection} onChange={event => {
+        const value = event.currentTarget.value;
+        setSelection(value);
+        if (value !== customEmployeePrefix) setCustomPrefix("");
+      }}>
+        <option value="">ไม่ระบุ</option>
+        {standardEmployeePrefixes.map(prefix => <option key={prefix} value={prefix}>{prefix}</option>)}
+        <option value={customEmployeePrefix}>อื่น ๆ</option>
+      </select>
+    </label>
+    {selection === customEmployeePrefix && <Field name="prefix_custom" label="คำนำหน้าอื่น ๆ"
+      maxLength={40} value={customPrefix} onChange={event => setCustomPrefix(event.currentTarget.value)} required />}
+    <Field name="first_name" label="ชื่อ" defaultValue={employee?.first_name} maxLength={120} required />
+    <Field name="last_name" label="นามสกุล" defaultValue={employee?.last_name} maxLength={120} />
+  </>;
 }

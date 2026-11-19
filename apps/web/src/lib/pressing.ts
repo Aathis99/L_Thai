@@ -1,3 +1,5 @@
+import { formatEmployeeName, type EmployeeNameParts } from "./employee-names.ts";
+
 export type Destination = "color" | "kiln";
 export type Allocation = "general" | "order";
 
@@ -34,10 +36,9 @@ export interface ProductionOrder {
   has_issues: boolean;
 }
 
-export interface PressingWorker {
+export interface PressingWorker extends EmployeeNameParts {
   id: number;
   code: string;
-  name: string;
 }
 
 export interface EntryValues {
@@ -172,7 +173,8 @@ export function orderName(order: ProductionOrder): string {
 }
 
 export function workerName(data: PressingData, id: number): string {
-  return data.workers.find((worker) => worker.id === id)?.name
+  const worker = data.workers.find((worker) => worker.id === id);
+  return (worker ? formatEmployeeName(worker) : undefined)
     ?? data.entries.find((entry) => entry.employee_id === id)?.employee_name
     ?? `พนักงาน #${id}`;
 }

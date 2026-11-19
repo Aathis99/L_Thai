@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatEmployeeName } from "../../lib/employee-names";
 import {
   bangkokDate, count, entryFormValues, formInteger, formText, orderName, pressingEntryPayload, tileName, timestamp, workerName,
   type EntryCorrection, type EntryValues, type PressingData, type PressingEntry,
@@ -130,7 +131,7 @@ export default function Production({ data, actions }: { data: PressingData; acti
 }
 
 function EntryFields({ data, entry }: { data: PressingData; entry?: PressingEntry }) {
-  const workers = data.workers.map((worker) => ({ value: worker.id, label: `${worker.name} · ${worker.code}` }));
+  const workers = data.workers.map((worker) => ({ value: worker.id, label: `${formatEmployeeName(worker)} · ${worker.code}` }));
   if (entry && !workers.some((worker) => worker.value === entry.employee_id)) {
     workers.unshift({ value: entry.employee_id, label: `${entry.employee_name} · ผู้ปั๊มเดิม` });
   }

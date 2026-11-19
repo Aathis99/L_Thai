@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { Badge } from "./fields";
 import { matchesEmployeeFilter } from "../lib/model";
+import { formatEmployeeName, matchesEmployeeSearch } from "../lib/employee-names";
 import {
   labels,
   symbols,
@@ -45,6 +46,7 @@ export default function RecordTable({
   const removable =
     view === "employees" ? can("employees.delete") : can(`${view}.manage`);
   const actions = (item: EditableRecord) => {
+    const name = "first_name" in item ? formatEmployeeName(item) : item.name;
     if (
       ("archived" in item && item.archived) ||
       (view === "roles" && item.id === 1)
@@ -53,16 +55,17 @@ export default function RecordTable({
     return (
       <div className="flex gap-[9px] whitespace-nowrap">
         {editable && (
-          <button className="table-button warning" onClick={() => onEdit(item)}>
-            แก้ไข<span className="sr-only"> {item.name}</span>
+          <button className="table-button warning" aria-label={`แก้ไข ${name}`} onClick={() => onEdit(item)}>
+            แก้ไข
           </button>
         )}
         {removable && (
           <button
             className="table-button danger"
+            aria-label={`ลบ ${name}`}
             onClick={() => onDelete(item)}
           >
-            ลบ<span className="sr-only"> {item.name}</span>
+            ลบ
           </button>
         )}
       </div>
@@ -82,7 +85,7 @@ export default function RecordTable({
       "จัดการ",
     ];
     rows = records.employees
-      .filter(match)
+      .filter((item) => matchesEmployeeSearch(item, query))
       .filter((item) => matchesEmployeeFilter(item, filter))
       .map((item) => ({
         id: item.id,
@@ -92,9 +95,9 @@ export default function RecordTable({
           </span>,
           <div className="person" key="name">
             <span className="avatar small" aria-hidden="true">
-              {item.name.slice(0, 1)}
+              {formatEmployeeName(item).slice(0, 1)}
             </span>
-            <strong>{item.name}</strong>
+            <strong>{formatEmployeeName(item)}</strong>
           </div>,
           <span key="position">
             {item.department || "ยังไม่ระบุแผนก"}
@@ -126,24 +129,25 @@ export default function RecordTable({
       "สถานะ",
       "จัดการ",
     ];
-    rows = records.users.filter(match).map((item) => ({
-      id: item.id,
-      cells: [
-        <span key="username">
-          <span className="code">{item.username}</span>
-          {item.id === user.id && <small className="you">คุณ</small>}
-        </span>,
-        item.name,
-        item.role_name,
-        item.employee_id
-          ? records.employees.find(
-              (employee) => employee.id === item.employee_id,
-            )?.name || `พนักงาน #${item.employee_id}`
-          : "ไม่เชื่อมโยง",
-        <Badge active={item.active} key="status" />,
-        actions(item),
-      ],
-    }));
+    rows = records.users.filter(match).map((item) => {
+      const employee = records.employees.find(employee => employee.id === item.employee_id);
+      return {
+        id: item.id,
+        cells: [
+          <span key="username">
+            <span className="code">{item.username}</span>
+            {item.id === user.id && <small className="you">คุณ</small>}
+          </span>,
+          item.name,
+          item.role_name,
+          item.employee_id
+            ? employee ? formatEmployeeName(employee) : `พนักงาน #${item.employee_id}`
+            : "ไม่เชื่อมโยง",
+          <Badge active={item.active} key="status" />,
+          actions(item),
+        ],
+      };
+    });
   } else if (view === "roles") {
     headers = ["ชื่อบทบาท", "สิทธิ์ที่ได้รับ", "จัดการ"];
     rows = records.roles.filter(match).map((item) => ({

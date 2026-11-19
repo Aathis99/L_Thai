@@ -1,3 +1,5 @@
+import type { EmployeeNameParts } from "./employee-names";
+
 export type View = "employees" | "positions" | "users" | "roles" | "audit";
 export interface SessionUser {
   id: number;
@@ -7,10 +9,9 @@ export interface SessionUser {
   role_name: string;
   permissions: string[];
 }
-export interface Employee {
+export interface Employee extends EmployeeNameParts {
   id: number;
   code: string;
-  name: string;
   department: string;
   position_id: number | null;
   position_name: string | null;

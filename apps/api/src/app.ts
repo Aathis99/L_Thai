@@ -17,6 +17,7 @@ import {
 import { COLOR_CHART_IMAGE_PATH, handleColorChartRoute } from "./color-chart/routes.js";
 import { handlePressingRoute } from "./pressing/routes.js";
 import { handleFinishingRoute } from "./finishing/routes.js";
+import { normalizeEmployeeNameParts } from "./employee-names.js";
 import {
   ApiError,
   fail,
@@ -409,9 +410,12 @@ export function createApplication(pool: pg.Pool, options: Options = {}) {
           await db.query("DELETE FROM roles WHERE id=$1", [id]);
         }
       } else if (resource === "employees") {
+        const names = normalizeEmployeeNameParts(body, existing);
         const values = [
           text(body.code, "รหัสพนักงาน", true, 40),
-          text(body.name, "ชื่อพนักงาน"),
+          names.prefix,
+          names.first_name,
+          names.last_name,
           text(body.department, "แผนก", false, 80),
           await foreign(db, "positions", body.position_id, "ตำแหน่ง", true),
           text(body.phone, "เบอร์โทร", false, 30),
@@ -431,12 +435,12 @@ export function createApplication(pool: pg.Pool, options: Options = {}) {
           method === "POST"
             ? await one(
                 db,
-                "INSERT INTO employees(code,name,department,position_id,phone,active,social_security_number,taxpayer_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id",
+                "INSERT INTO employees(code,prefix,first_name,last_name,department,position_id,phone,active,social_security_number,taxpayer_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id",
                 values,
               )
             : await one(
                 db,
-                "UPDATE employees SET code=$1,name=$2,department=$3,position_id=$4,phone=$5,active=$6,social_security_number=$7,taxpayer_id=$8,updated_at=now() WHERE id=$9 RETURNING id",
+                "UPDATE employees SET code=$1,prefix=$2,first_name=$3,last_name=$4,department=$5,position_id=$6,phone=$7,active=$8,social_security_number=$9,taxpayer_id=$10,updated_at=now() WHERE id=$11 RETURNING id",
                 [...values, id],
               );
       } else if (resource === "positions") {

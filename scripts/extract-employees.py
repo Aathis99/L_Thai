@@ -38,11 +38,13 @@ def extract(source: Path) -> dict:
                 cell = sheet.cell(row_index, column)
                 if cell.ctype not in (xlrd.XL_CELL_TEXT, xlrd.XL_CELL_EMPTY, xlrd.XL_CELL_BLANK):
                     raise ValueError(f"Expected text name component on row {row_index + 1}")
-                parts.append(str(cell.value).strip())
+                parts.append(' '.join(str(cell.value).split()))
             title, given, surname = parts
             if not given:
                 raise ValueError(f"Missing given name on row {row_index + 1}")
-            name = title + given + (" " + surname if surname else "")
+            if len(title)>40 or len(given)>120 or len(surname)>120:
+                raise ValueError(f"Name component too long on row {row_index + 1}")
+            name = ' '.join(part for part in parts if part)
             phone_cell = sheet.cell(row_index, 10)
             if phone_cell.ctype != xlrd.XL_CELL_TEXT:
                 raise ValueError(f"Phone must be text to preserve leading zeros on row {row_index + 1}")
@@ -53,7 +55,8 @@ def extract(source: Path) -> dict:
                 raise ValueError(f"Duplicate employee name on row {row_index + 1}")
             serials.add(serial)
             names.add(name.casefold())
-            employees.append({"serial": serial, "code": f"EMP69-{serial:03}", "name": name, "phone": phone})
+            employees.append({"serial": serial, "code": f"EMP69-{serial:03}", "prefix": title,
+                              "first_name": given, "last_name": surname, "phone": phone})
         return {"sourceSha256": hashlib.sha256(raw).hexdigest(), "sheet": SHEET, "employees": employees}
     finally:
         book.release_resources()
@@ -69,7 +72,8 @@ def main():
     payload = extract(args.input)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({"employees": len(payload["employees"]), "distinctSerials": len({row["serial"] for row in payload["employees"]}), "distinctNames": len({row["name"] for row in payload["employees"]})}))
+    print(json.dumps({"employees": len(payload["employees"]), "distinctSerials": len({row["serial"] for row in payload["employees"]}),
+                      "distinctNames": len({(row["prefix"],row["first_name"],row["last_name"]) for row in payload["employees"]})}))
 
 
 if __name__ == "__main__":

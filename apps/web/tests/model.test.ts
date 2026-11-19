@@ -16,6 +16,7 @@ test('editing a user preserves password when blank and converts linked ids and s
 test('employee and account status payloads use booleans for both checkbox states', () => {
   for (const view of ['employees', 'users'] as const) {
     const form = new FormData();
+    if (view === 'employees') form.set('first_name', 'สมใจ');
     assert.equal(editorPayload(view, form, false).active, false);
     form.set('active', 'on');
     assert.equal(editorPayload(view, form, false).active, true);

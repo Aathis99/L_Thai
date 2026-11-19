@@ -40,17 +40,17 @@ test('Express/PostgreSQL access lifecycle preserves authorization and transactio
     });
     await t.test('employee and position CRUD, Thai text, duplicate and foreign key validation',async()=>{
       const position=(await call('/positions','POST',{name:'ธุรการ'},admin)).body.id;
-      employee=(await call('/employees','POST',{code:'EMP001',name:'สมใจ ทดสอบ',position_id:position,phone:'081-0000000',social_security_number:'0000000000001',taxpayer_id:'0000000000002'},admin)).body.id;
+      employee=(await call('/employees','POST',{code:'EMP001',first_name:'สมใจ ทดสอบ',position_id:position,phone:'081-0000000',social_security_number:'0000000000001',taxpayer_id:'0000000000002'},admin)).body.id;
       assert.ok(employee);
       const profile=(await call('/employees','GET',undefined,admin)).body.items[0];
       assert.equal(profile.social_security_number,'0000000000001');
       assert.equal(profile.taxpayer_id,'0000000000002');
-      assert.equal((await call('/employees','POST',{code:'BAD-ID',name:'ทดสอบ',taxpayer_id:'invalid'},admin)).status,400);
-      assert.equal((await call('/employees','POST',{code:'emp001',name:'ชื่อซ้ำ'},admin)).status,409);
+      assert.equal((await call('/employees','POST',{code:'BAD-ID',first_name:'ทดสอบ',taxpayer_id:'invalid'},admin)).status,400);
+      assert.equal((await call('/employees','POST',{code:'emp001',first_name:'ชื่อซ้ำ'},admin)).status,409);
       assert.equal((await call('/positions/'+position,'DELETE',undefined,admin)).status,409);
-      assert.equal((await call('/employees/'+employee,'PUT',{code:'EMP001',name:'สมใจ แก้ไข',position_id:99999},admin)).status,400);
-      assert.equal((await call('/employees/'+employee,'PUT',{code:'EMP001',name:'สมใจ แก้ไข',position_id:position,active:true},admin)).status,200);
-      assert.equal((await call('/employees','GET',undefined,admin)).body.items[0].name,'สมใจ แก้ไข');
+      assert.equal((await call('/employees/'+employee,'PUT',{code:'EMP001',first_name:'สมใจ แก้ไข',position_id:99999},admin)).status,400);
+      assert.equal((await call('/employees/'+employee,'PUT',{code:'EMP001',first_name:'สมใจ แก้ไข',position_id:position,active:true},admin)).status,200);
+      assert.equal((await call('/employees','GET',undefined,admin)).body.items[0].first_name,'สมใจ แก้ไข');
       assert.equal((await call('/employees','GET',undefined,admin)).body.items[0].taxpayer_id,'0000000000002');
     });
     await t.test('reader denied writes, role edits apply immediately, role references cannot be deleted',async()=>{
@@ -62,14 +62,14 @@ test('Express/PostgreSQL access lifecycle preserves authorization and transactio
       userId=created.body.id;
       reader=(await call('/login','POST',{username:'reader',password})).cookie;
       assert.equal((await call('/employees','GET',undefined,reader)).status,200);
-      assert.equal((await call('/employees','POST',{code:'BAD',name:'ไม่มีสิทธิ์'},reader)).status,403);
+      assert.equal((await call('/employees','POST',{code:'BAD',first_name:'ไม่มีสิทธิ์'},reader)).status,403);
       assert.equal((await call('/users','GET',undefined,reader)).status,403);
       assert.equal((await call('/roles/'+role,'PUT',{name:'พักสิทธิ์',permissions:[]},admin)).status,200);
       assert.equal((await call('/employees','GET',undefined,reader)).status,403);
       assert.equal((await call('/roles/'+role,'DELETE',undefined,admin)).status,409);
     });
     await t.test('last admin protected via user and employee paths',async()=>{
-      const own=(await call('/employees','POST',{code:'ADMIN',name:'ผู้ดูแล'},admin)).body.id;
+      const own=(await call('/employees','POST',{code:'ADMIN',first_name:'ผู้ดูแล'},admin)).body.id;
       const id=(await call('/me','GET',undefined,admin)).body.user.id;
       assert.equal((await call('/users/'+id,'DELETE',undefined,admin)).status,409);
       assert.equal((await call('/users/'+id,'PUT',{username:'admin',name:'ผู้ดูแล',role_id:role,active:true},admin)).status,409);
@@ -78,7 +78,7 @@ test('Express/PostgreSQL access lifecycle preserves authorization and transactio
       assert.equal((await call('/roles/1','PUT',{name:'ไม่อนุญาต',permissions:[]},admin)).status,409);
     });
     await t.test('cross-origin and malformed JSON denied with useful errors',async()=>{
-      assert.equal((await call('/employees','POST',{code:'X',name:'X'},admin,'https://evil.example')).status,403);
+      assert.equal((await call('/employees','POST',{code:'X',first_name:'X'},admin,'https://evil.example')).status,403);
       assert.equal((await call('/employees','POST',null,admin)).status,400);
       assert.equal((await call('/roles','POST',{name:'X',permissions:['everything']},admin)).status,400);
     });
@@ -97,7 +97,7 @@ test('Express/PostgreSQL access lifecycle preserves authorization and transactio
       assert.equal((await call('/users','POST',{username:'replacement',name:'ใหม่',role_id:role,employee_id:employee,password},admin)).status,201);
     });
     await t.test('concurrent creation and archival cannot leave active linked user',async()=>{
-      const target=(await call('/employees','POST',{code:'RACE',name:'ทดสอบพร้อมกัน'},admin)).body.id;
+      const target=(await call('/employees','POST',{code:'RACE',first_name:'ทดสอบพร้อมกัน'},admin)).body.id;
       const pending=call('/users','POST',{username:'race',name:'ทดสอบ',role_id:role,employee_id:target,password},admin);
       await new Promise(r=>setTimeout(r,5));
       assert.equal((await call('/employees/'+target,'DELETE',undefined,admin)).status,200);

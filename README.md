@@ -108,7 +108,7 @@ Backup เป็น PostgreSQL custom dump ใน `data/backups` ทำขณะ
 
 ```powershell
 npm run db:migrate
-npm run data:migrate
+npm run data:migrate --workspace=@lthai/api -- ../../data/staging/legacy-name-mapping.json
 npm run employees:import
 node scripts/reconcile-data.mjs
 ```
@@ -120,6 +120,12 @@ python scripts/extract-employees.py --input "ประวัติพนัก�
 ```
 
 ตัว extractor อ่านเฉพาะชีต/คอลัมน์ที่ตกลง และสร้าง JSON ส่วนตัวใน data/staging ตัว importer ตรวจ hash ว่าตรงกับ source ก่อน import อย่านำ Excel/JSON/ฐานข้อมูลส่วนตัวขึ้น Git
+
+ชื่อพนักงานใช้ `prefix`, `first_name`, `last_name` แยกกัน ชื่อจำเป็น คำนำหน้าและนามสกุลเว้นว่างได้ รองรับหลายคำ ไม่มี `employees.name` หรือ payload ชื่อรวมใน API พนักงาน ตัว extractor ส่งสามช่องโดยตรงจาก B/C/D ต้องสกัด staging เก่าใหม่ก่อนนำเข้า
+
+การย้าย SQLite เก่าต้องมีไฟล์ mapping ที่ตรวจแล้ว รูปแบบ `{ "19": { "expectedName": "ชื่อเดิมตรงตามต้นทาง", "prefix": "", "first_name": "ชื่อ", "last_name": "นามสกุล" } }` ตาม source employee id ทุกคน หากไม่มี mapping หรือชื่อเดิมไม่ตรง ระบบยกเลิกทั้ง transaction ไม่เดาแบ่งคำ
+
+ฐาน PostgreSQL เก่าที่มี `employees.name` ต้องอัปเกรดอย่างชัดเจนก่อนเปิด API ใหม่ ใช้คำสั่ง `node --import tsx apps/api/src/commands.ts employee-names <mapping.json> <expected-database> <source.xls> <source.md> --dry-run` เพื่อตรวจรายการก่อนทำจริง รูปแบบ mapping และขั้นตอนสำรอง/QA อยู่ใน [แบบแยกส่วนชื่อพนักงาน](docs/superpowers/specs/2026-11-19-employee-name-parts-design.md) ห้ามรัน migration/test กับฐานหลักระหว่างพัฒนา
 
 ## ตรวจสอบและโครงสร้าง
 

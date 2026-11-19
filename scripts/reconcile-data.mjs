@@ -10,11 +10,12 @@ try{
   const payload=JSON.parse(await readFile(new URL('../data/staging/employees-2569.json',import.meta.url),'utf8'));
   const raw=await readFile(new URL('../ประวัติพนักงานบจ.กระเบื้องปี2569.xls',import.meta.url));
   if(createHash('sha256').update(raw).digest('hex')!==payload.sourceSha256)throw new Error('Workbook hash changed');
-  const employees=(await pool.query("SELECT * FROM employees WHERE code LIKE 'EMP69-%' OR code ~ '^emp[0-9]{3}$' ORDER BY code")).rows;
+  const employees=(await pool.query("SELECT *,concat_ws(' ',nullif(prefix,''),first_name,nullif(last_name,'')) AS name FROM employees WHERE code LIKE 'EMP69-%' OR code ~ '^emp[0-9]{3}$' ORDER BY code")).rows;
   if(employees.length!==36)throw new Error('Imported employee count mismatch');
   for(const original of payload.employees){
     const row=employees.find(e=>e.code===original.code||e.code===`emp${String(original.serial).padStart(3,'0')}`);
-    if(!row||row.name!==original.name||row.phone!==original.phone||row.department!==''||row.position_id!==null)throw new Error('Employee source mapping mismatch (details withheld)');
+    const sourceName=original.first_name!==undefined?[original.prefix,original.first_name,original.last_name].filter(Boolean).join(' '):original.name;
+    if(!row||typeof sourceName!=='string'||row.name.replace(/\s+/gu,'')!==sourceName.replace(/\s+/gu,'')||row.phone!==original.phone||row.department!==''||row.position_id!==null)throw new Error('Employee source mapping mismatch (details withheld)');
   }
   const oldUsers=source.prepare('SELECT * FROM users ORDER BY id').all();
   const users=(await pool.query('SELECT * FROM users ORDER BY id')).rows;

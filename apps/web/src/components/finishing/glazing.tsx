@@ -1,3 +1,4 @@
+import { formatEmployeeName } from "../../lib/employee-names";
 import { count, formText } from "../../lib/pressing";
 import type { Api, SessionUser } from "../../lib/types";
 import { Field } from "../fields";
@@ -28,7 +29,7 @@ export default function GlazingPage({ api, user }: { api: Api; user: SessionUser
                     <p>{orderName(issue.order_id)} · {issue.color_name} · เหลือ {count(issue.unglazed_pieces)} แผ่น</p>
                     <DateField name="worked_on" label="วันที่ชุบ" />
                     <fieldset><legend>ผู้ทำงาน</legend>
-                      {data.workers.map(worker => <Check key={worker.id} name="workers" value={worker.id} label={`${worker.code} · ${worker.name}`} />)}
+                      {data.workers.map(worker => <Check key={worker.id} name="workers" value={worker.id} label={`${worker.code} · ${formatEmployeeName(worker)}`} />)}
                     </fieldset>
                     <NumberField name="pieces" label="จำนวนแผ่นในชุด" max={issue.unglazed_pieces} />
                     <NumberField name="pressing_waste" label="ปั๊มเสีย (แผ่น)" min={0} defaultValue={0} />

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { backup, DatabaseSync } from 'node:sqlite';
 import type { Pool, PoolClient } from 'pg';
 import { baselineRoles, grantAdminProductionPermissions } from './database.js';
+import { normalizeEmployeeNameParts, formatEmployeeName, type EmployeeNameParts } from './employee-names.js';
 
 const SHEET = 'พนักงาน ปี2569';
 const LOCK = 20261109;
@@ -20,7 +21,7 @@ type Table = keyof typeof tables;
 export interface EmployeeImportPayload {
   sourceSha256: string;
   sheet: typeof SHEET;
-  employees: { serial: number; code: string; name: string; phone: string }[];
+  employees: (EmployeeNameParts & { serial: number; code: string; phone: string })[];
 }
 export interface EmployeeImportResult { status: 'imported' | 'skipped'; employees: number }
 export interface LegacyMigrationResult {
@@ -49,10 +50,11 @@ function validateEmployees(payload: EmployeeImportPayload) {
       || row.code !== `EMP69-${String(row.serial).padStart(3, '0')}`) {
       throw new Error('Employee import has an invalid or duplicate serial/code');
     }
-    if (typeof row.name !== 'string' || !row.name.trim() || row.name !== row.name.trim() || row.name.length > 120
-      || names.has(row.name.toLocaleLowerCase('th'))) throw new Error('Employee import has an invalid or duplicate name');
+    const parts = normalizeEmployeeNameParts(row);
+    const name = formatEmployeeName(parts).toLocaleLowerCase('th');
+    if (names.has(name)) throw new Error('Employee import has an invalid or duplicate name');
     if (typeof row.phone !== 'string' || !/^[0-9-]{11}$/.test(row.phone)) throw new Error('Employee import requires original text phone values');
-    serials.add(row.serial); names.add(row.name.toLocaleLowerCase('th'));
+    serials.add(row.serial); names.add(name);
   }
 }
 
@@ -69,12 +71,14 @@ export async function importEmployees(pool: Pool, payload: EmployeeImportPayload
       return { status: 'skipped', employees: Number(previous.rows[0].details.employees) };
     }
     const conflicts = await client.query(`SELECT 1 FROM employees
-      WHERE lower(code)=ANY($1::text[]) OR lower(name)=ANY($2::text[]) LIMIT 1`, [
-      payload.employees.map(row => row.code.toLowerCase()), payload.employees.map(row => row.name.toLocaleLowerCase('th')),
+      WHERE lower(code)=ANY($1::text[]) OR lower(concat_ws(' ',nullif(prefix,''),first_name,nullif(last_name,'')))=ANY($2::text[]) LIMIT 1`, [
+      payload.employees.map(row => row.code.toLowerCase()), payload.employees.map(row => formatEmployeeName(normalizeEmployeeNameParts(row)).toLocaleLowerCase('th')),
     ]);
     if (conflicts.rowCount) throw new Error('Employee import conflict: a generated code or employee name already exists; no rows imported');
     for (const row of [...payload.employees].sort((a, b) => a.serial - b.serial)) {
-      await client.query('INSERT INTO employees(code,name,phone) VALUES($1,$2,$3)', [row.code, row.name, row.phone]);
+      const parts = normalizeEmployeeNameParts(row);
+      await client.query('INSERT INTO employees(code,prefix,first_name,last_name,phone) VALUES($1,$2,$3,$4,$5)',
+        [row.code, parts.prefix, parts.first_name, parts.last_name, row.phone]);
     }
     await client.query('INSERT INTO data_migrations(key,details) VALUES($1,$2::jsonb)', [key, JSON.stringify({
       sourceSha256: payload.sourceSha256.toLowerCase(), sheet: SHEET, employees: payload.employees.length,
@@ -113,7 +117,8 @@ function sqliteValue(column: string, value: unknown) {
 }
 
 /** Snapshot with SQLite's online backup API so WAL data is included before reading records. */
-export async function migrateLegacy(pool: Pool, sqlitePath: string, backupDirectory: string): Promise<LegacyMigrationResult> {
+export type LegacyNameMapping = Record<number, EmployeeNameParts & { expectedName: string }>;
+export async function migrateLegacy(pool: Pool, sqlitePath: string, backupDirectory: string, names: LegacyNameMapping = {}): Promise<LegacyMigrationResult> {
   const client = await pool.connect();
   let snapshot: DatabaseSync | undefined;
   try {
@@ -144,8 +149,18 @@ export async function migrateLegacy(pool: Pool, sqlitePath: string, backupDirect
       }
       const rows = snapshot.prepare(`SELECT ${columns.join(',')} FROM ${table} ORDER BY id`).all();
       for (const row of rows) {
-        await client.query(`INSERT INTO ${table}(${columns.join(',')}) VALUES(${columns.map((_, index) => `$${index + 1}`).join(',')})`,
-          columns.map(column => sqliteValue(column, row[column])));
+        if (table === 'employees') {
+          const mapped = names[Number(row.id)];
+          if (!mapped || mapped.expectedName !== row.name) throw new Error('Legacy employee name mapping missing or changed');
+          const parts = normalizeEmployeeNameParts(mapped);
+          const targetColumns = [...columns.filter(column => column !== 'name'), 'prefix', 'first_name', 'last_name'];
+          const values = [...columns.filter(column => column !== 'name').map(column => sqliteValue(column, row[column])),
+            parts.prefix, parts.first_name, parts.last_name];
+          await client.query(`INSERT INTO employees(${targetColumns.join(',')}) VALUES(${values.map((_, index) => `$${index + 1}`).join(',')})`, values);
+        } else {
+          await client.query(`INSERT INTO ${table}(${columns.join(',')}) VALUES(${columns.map((_, index) => `$${index + 1}`).join(',')})`,
+            columns.map(column => sqliteValue(column, row[column])));
+        }
       }
       counts[table] = rows.length;
     }

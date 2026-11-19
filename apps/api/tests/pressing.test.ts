@@ -55,11 +55,11 @@ test('pressing catalog, orders and worker selection use session permissions', as
   const admin = (await call('/login', 'POST', { username: 'admin', password })).cookie;
   assert.ok(admin);
   const worker = await call('/employees', 'POST', {
-    code: 'EMP-1', name: 'คนปั๊ม', phone: '081-2345678',
+    code: 'EMP-1', prefix: 'Dr.', first_name: 'Mary Jane', last_name: 'van der Meer', phone: '081-2345678',
   }, admin);
   assert.equal(worker.status, 201);
-  assert.equal((await call('/employees', 'POST', { code: 'EMP-2', name: 'พักงาน', active: false }, admin)).status, 201);
-  const archived = await call('/employees', 'POST', { code: 'EMP-3', name: 'ออกแล้ว' }, admin);
+  assert.equal((await call('/employees', 'POST', { code: 'EMP-2', first_name: 'พักงาน', active: false }, admin)).status, 201);
+  const archived = await call('/employees', 'POST', { code: 'EMP-3', first_name: 'ออกแล้ว' }, admin);
   assert.equal(archived.status, 201);
   assert.equal((await call('/employees/' + archived.body.id, 'DELETE', undefined, admin)).status, 200);
   const role = await call('/roles', 'POST', { name: 'อ่านอย่างเดียว', permissions: ['employees.read'] }, admin);
@@ -101,7 +101,7 @@ test('pressing catalog, orders and worker selection use session permissions', as
     assert.equal((await press('/types', 'POST', tile, reader)).status, 403);
     const workers = await press('/workers', 'GET', undefined, reader);
     assert.equal(workers.status, 200);
-    assert.deepEqual(workers.body.items, [{ id: worker.body.id, code: 'EMP-1', name: 'คนปั๊ม' }]);
+    assert.deepEqual(workers.body.items, [{ id: worker.body.id, code: 'EMP-1', prefix: 'Dr.', first_name: 'Mary Jane', last_name: 'van der Meer' }]);
   });
 
   await t.test('catalog validates type values and deletes an unused type', async () => {
@@ -270,7 +270,7 @@ test('pressing catalog, orders and worker selection use session permissions', as
       id: recorded.body.id, order_id: orderId, pressed_on: '2099-01-29', full_racks: 23,
       loose_pieces: 0, note: null, pieces: 17250, original_pieces: 17250, pieces_per_rack: 750, rest_days: 4,
       ready_on: '2099-02-02', square_meters: 345, employee_id: worker.body.id,
-      employee_name: 'คนปั๊ม', recorded_by: 1, recorded_by_username: 'admin',
+      employee_name: 'Dr. Mary Jane van der Meer', recorded_by: 1, recorded_by_username: 'admin',
       recorded_at: fullRackEntry.recorded_at,
     });
     assert.ok(Number.isFinite(Date.parse(fullRackEntry.recorded_at)));
@@ -289,7 +289,7 @@ test('pressing catalog, orders and worker selection use session permissions', as
 
   await t.test('two workers contribute to the same order and customer pieces stay allocated to it', async () => {
     const { orderId } = await makeOrder('customer', 5000);
-    const secondWorker = await call('/employees', 'POST', { code: 'EMP-4', name: 'ผู้ปั๊มคนที่สอง' }, admin);
+    const secondWorker = await call('/employees', 'POST', { code: 'EMP-4', first_name: 'ผู้ปั๊มคนที่สอง' }, admin);
     assert.equal(secondWorker.status, 201);
     const first = { ...entryInput(orderId, 4), pressed_on: '2024-02-29' };
     const created = await Promise.all([first, first, {
@@ -624,7 +624,7 @@ test('pressing catalog, orders and worker selection use session permissions', as
     const created = await press('/entries', 'POST', receipt);
     assert.equal(created.status, 201);
     const path = '/entries/' + created.body.id;
-    const newWorker = await call('/employees', 'POST', { code: 'EMP-5', name: 'คนปั๊มอีกคน' }, admin);
+    const newWorker = await call('/employees', 'POST', { code: 'EMP-5', first_name: 'คนปั๊มอีกคน' }, admin);
     assert.equal(newWorker.status, 201);
     assert.equal((await press('/types/' + typeId, 'PUT', {
       ...tile, pieces_per_rack: 1000, rest_days: 0, pieces_per_sqm: 100,

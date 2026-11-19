@@ -53,11 +53,11 @@ test('an order keeps its customer quantity, rounded allowance, color and area ra
 
 test('finishing tracks glazing, split firing, pooled QC and stock without spending pieces twice', async t => {
   const pool = await fixture(t);
-  const { correctGlazing, recordGlazing } = await import('../src/finishing/glazing.js');
+  const { correctGlazing, recordGlazing, listGlazing } = await import('../src/finishing/glazing.js');
   const actor = await one(pool, `INSERT INTO users(username,name,password_hash,role_id)
     VALUES('operator','Operator','unused',1) RETURNING id,username`);
-  const worker = await one(pool, "INSERT INTO employees(code,name) VALUES('A','Worker') RETURNING id");
-  const other = await one(pool, "INSERT INTO employees(code,name) VALUES('B','Worker 2') RETURNING id");
+  const worker = await one(pool, "INSERT INTO employees(code,prefix,first_name,last_name) VALUES('A','Dr.','Mary Jane','van der Meer') RETURNING id");
+  const other = await one(pool, "INSERT INTO employees(code,first_name) VALUES('B','Worker 2') RETURNING id");
   const type = await saveType(pool, {
     width: 2, length: 8, clay: 'ขาว', pieces_per_rack: 100, rest_days: 0, destination: 'color',
   });
@@ -80,6 +80,7 @@ test('finishing tracks glazing, split firing, pooled QC and stock without spendi
   const save = () => transaction(pool, db => recordGlazing(db, batch, actor));
   const results = await Promise.all([save(), save()]);
   assert.equal(results[0], results[1]);
+  assert.deepEqual((await listGlazing(pool))[0].workers, ['Dr. Mary Jane van der Meer', 'Worker 2']);
   await assert.rejects(transaction(pool, db => recordGlazing(db, { ...batch, request_id: 'extra' }, actor)),
     /ยอดเบิก/);
   const line = await one(pool, 'SELECT id FROM pressing_issue_lines');
@@ -224,7 +225,7 @@ test('finished production routes require read and operation permissions independ
   const legacy = await call('/pressing/orders', { type_id, target_pieces: 50, purpose: 'customer', customer_reference: 'LEGACY' }, admin);
   assert.equal(legacy.status, 201);
   const { id: order_id } = await legacy.json() as { id: number };
-  const worker = await call('/employees', { code: 'BR', name: 'Worker' }, admin);
+  const worker = await call('/employees', { code: 'BR', first_name: 'Worker' }, admin);
   const { id: employee_id } = await worker.json() as { id: number };
   assert.equal((await call('/pressing/entries', { order_id, employee_id, pressed_on: '2026-01-01',
     full_racks: 1, loose_pieces: 0, request_id: 'legacy-entry' }, admin)).status, 201);

@@ -11,7 +11,8 @@ export function listFinishingIssues(db: Db) {
 export function listGlazing(db: Db) {
   return all(db, `SELECT b.*,to_char(b.worked_on,'YYYY-MM-DD') AS worked_on,
     i.order_id,i.customer_reference,i.color_name,i.type_id,
-    ARRAY(SELECT e.name FROM glazing_batch_workers w JOIN employees e ON e.id=w.employee_id
+    ARRAY(SELECT concat_ws(' ',nullif(e.prefix,''),nullif(e.first_name,''),nullif(e.last_name,''))
+      FROM glazing_batch_workers w JOIN employees e ON e.id=w.employee_id
       WHERE w.batch_id=b.id ORDER BY e.id) AS workers
     FROM glazing_batches b JOIN finishing_issues i ON i.id=b.issue_id ORDER BY b.id DESC`);
 }

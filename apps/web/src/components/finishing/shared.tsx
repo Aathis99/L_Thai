@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ComponentProps, type Rea
 import { finishingTileName, type FinishingTile } from "../../lib/finishing";
 import { bangkokDate, formInteger, formText } from "../../lib/pressing";
 import type { Api, SessionUser } from "../../lib/types";
+import type { PressingWorker } from "../../lib/pressing";
 import { Field } from "../fields";
 import { FormDialog } from "../pressing/shared";
 
@@ -23,7 +24,7 @@ type Qc = { id: number; round_id: number; sorted_on: string; good_pieces: number
   allocations: { id: number; order_id: number; pieces: number; voided_at: string | null }[] };
 export type Data = {
   types: FinishingTile[]; orders: Order[]; issues: Issue[]; glazing: Batch[]; rounds: Round[]; sources: Source[];
-  qc: Qc[]; workers: { id: number; code: string; name: string }[];
+  qc: Qc[]; workers: PressingWorker[];
 };
 type Editor = Pick<ComponentProps<typeof FormDialog>, "title" | "path" | "build" | "children" | "intent">;
 type Common = "types" | "orders";

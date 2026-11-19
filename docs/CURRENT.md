@@ -1,6 +1,50 @@
 # สถานะงานล่าสุด
 
-อัปเดต: 18 พฤศจิกายน 2026
+อัปเดต: 19 พฤศจิกายน 2026
+
+## เรียงคอลัมน์พนักงานแบบถาวร — ใช้บนฐานหลักแล้ว
+
+- ผู้ใช้ตรวจรับQAและอนุมัตินำขึ้นหลักเมื่อ19พฤศจิกายน2026 เรียงคอลัมน์ในpublic.employeesของฐานlthaiบนDockerแล้ว ไม่ใช่เพียงลำดับแสดงผลในDBeaver
+- ลำดับจริงคือ id,code,prefix,first_name,last_name,department,position_id,phone,active,archived,created_at,updated_at,social_security_number,taxpayer_id พนักงานยัง37คน
+- ก่อนย้ายรันintegration8รายการและhash regression1รายการผ่านอีกครั้ง ตรวจdry-runฐานหลักผ่าน หยุดรับงานจากweb/APIชั่วคราว แล้วสำรองหลักใหม่พร้อมQAที่ `data/backups/column-order-live-25691119-111452-437/` มี lthai.dump และ lthai_column_order_qa.dump ตรวจSHA-256ครบทั้งสอง
+- เก็บbaselineล่าสุดหลังหยุดบริการและย้ายตารางในtransactionจากข้อมูลหลักปัจจุบัน ไม่คัดลอกข้อมูลQAทับหลัก ตรวจข้อมูลทั้ง33ตารางตรงก่อนย้าย นิยามและชื่อconstraints/indexesเดิมครบ รักษาsequence OID/state/ownership และforeign keysเข้า4/ออก1
+- เริ่มDocker API/webอิมเมจเดิมที่รองรับชื่อแยกแล้ว ไม่ต้องbuildใหม่เพราะเปลี่ยนลำดับคอลัมน์อย่างเดียว เว็บหลัก http://127.0.0.1:3001 และAPI healthตอบHTTP200 ทั้งสามบริการhealthy
+- หลังตรวจหลักผ่านปิดNode QAพอร์ต4133และลบฐานlthai_column_order_qaแล้ว เก็บสำรองQAไว้ข้างต้น ตรวจเหลือฐานlthaiและชุดlthai-dockerชุดเดียว หลักฐานส่วนตัวอยู่ `.qa/column-order/`
+- ขั้นถัดไปใช้งานฐานหลักตามปกติ หากDBeaverยังแสดงmetadataเดิมให้refresh/เปิดตารางemployeesของconnectionหลักใหม่ ข้อมูลด้านล่างเป็นประวัติการซ้อมก่อนนำขึ้น
+
+- ผู้ใช้ขอตรวจขอบเขตการย้าย prefix/first_name/last_name มาต่อ code แบบถาวร จัดทำ [ผลตรวจผลกระทบ](employee-column-order-impact.md) จากโค้ดและ metadata Docker แบบอ่านอย่างเดียว
+- ไม่พบเหตุให้แก้ UI/API business logic งานหลักคือ migration ตาราง รักษา foreign keys เข้า4/ออก1 และ sequence/constraints/indexes พร้อมปรับเครื่องมือตรวจ hash ที่พึ่งลำดับ key
+- ผู้ใช้อนุมัติให้เริ่มทดลองบน QA เมื่อ 19 พฤศจิกายน 2026 ใช้ [แผนซ้อมเรียงคอลัมน์](superpowers/plans/2026-11-19-employee-column-order.md) และตรวจรับก่อนนำขึ้นหลักแล้ว
+- สำรองหลักใหม่พร้อมตรวจ SHA-256 ที่ `data/backups/column-order-qa-25691119-105635-610/lthai.dump` กู้เป็น `lthai_column_order_qa` ตรวจเป้าหมายและพนักงาน37คน เก็บ baseline fingerprints33ตาราง/constraints/sequence ใน `.qa/column-order/` นอก Git
+- เพิ่ม `apps/api/src/employee-column-order.ts` เป็นฟังก์ชัน migration ที่เรียกอย่างชัดเจน ไม่ทำเมื่อเริ่มแอป ตรวจชื่อฐานและ metadata ล็อกและย้ายใน transaction ไม่ใช้ DROP CASCADE; dry-run ผ่าน ย้าย QA37คนใช้ประมาณ90ms แล้วรันซ้ำ skipped
+- QA ได้ลำดับ id,code,prefix,first_name,last_name,department,position_id,phone,active,archived,created_at,updated_at,social_security_number,taxpayer_id ตามต้องการ เทียบค่าข้อมูลทั้ง33ตาราง/ชื่อและนิยามconstraints/foreign keysทั้ง5/sequence stateและownershipตรงก่อนย้าย ตรวจฐานหลักแยกแบบread-onlyยังมีลำดับและข้อมูลเดิมทั้ง33ตาราง
+- Integration8รายการผ่าน รวม rollback หลังเกิด dependency error ระหว่าง DDL และ FK rebinding ไป OIDใหม่ รักษา sequence OID/state พร้อมปฏิเสธ incoming FK comments และ default grants ที่ไม่ได้รองรับ ผู้ตรวจอิสระไม่มีประเด็นค้าง
+- ปรับ hash ตรวจข้อมูลไม่ให้พึ่งลำดับคอลัมน์พร้อม regression test; npm run check, npm test ผ่าน112รายการ ข้าม5รายการเดิมที่ต้องใช้Python และ API production build ผ่าน ปรับ safety guards ชุดทดสอบชื่อพนักงานให้รับฐาน lthai_*_qa แทนผูกชื่อ QAเก่าโดยยังปฏิเสธฐานหลัก
+- APIทดสอบNodeเดิมพอร์ต4133และฐานlthai_column_order_qaปิด/ลบหลังนำขึ้นหลักแล้ว ห้ามใช้env QAเดิมโดยไม่สร้างฐานแยกและตรวจเป้าหมายใหม่
+
+## แยกส่วนชื่อพนักงานและนำเข้าทะเบียนปี 2569 — เปิดใช้บนชุดหลักแล้ว
+
+- ผู้ใช้ตรวจรับ QA และอนุมัติให้นำขึ้นจริงเมื่อ 19 พฤศจิกายน 2026 เปิดใช้ Docker หลัก http://127.0.0.1:3001 แล้ว
+- ก่อนนำขึ้น ตรวจฐานหลักทั้ง 33 ตารางตรง snapshot เดิม สำรองใหม่พร้อม SHA-256 ที่ `data/backups/employee-names-live-25691119-094431-921/` มีทั้ง `lthai.dump` และ `lthai_employee_names_qa.dump` ตรวจ checksum ทั้งสองแล้ว
+- ระหว่างตรวจ QA ผู้ใช้เพิ่ม emp038 และแก้คำนำหน้า emp037 ผู้ใช้ยืนยันไม่นำ emp038 ขึ้นหลัก จึงย้ายเฉพาะ 37 คนพร้อมคำนำหน้าที่ตรวจรับของ emp037 ไม่มีการ restore QA ทับหลัก ใช้ guarded transaction กับฐาน lthai และข้อมูลเดิมที่คาดหมาย
+- build Docker api/web สำเร็จก่อนหยุดบริการเก่า เปลี่ยน schema+ข้อมูลและเริ่มบริการใหม่พร้อมกัน ตรวจหลักครบ 37 คน ไม่มี employees.name รหัส/id/ข้อมูลอื่นและ foreign keys เดิมคงอยู่ fingerprints ตารางที่ไม่เกี่ยวข้อง 30 ตารางตรงเดิม
+- ตรวจ UI จากเว็บ Docker จริงพอร์ต3001 ด้วย Chrome โดย routing API และการเขียนทดสอบไป QA: เพิ่ม/แก้ไข/อ่านกลับ คำนำหน้าอื่น ๆ ชื่อหลายคำ นามสกุลว่าง ค้นหา ตัวเลือกบัญชี งานปั๊ม/ชุบ และจอ390px ผ่าน ไม่มี page error ตรวจฐานหลักแยกด้วย SELECT และ API health จริงตอบ HTTP200 ทั้งสามบริการ healthy
+- เก็บ QA backup ข้างต้นแล้ว ปิด Node QA พอร์ต3133/4133 และลบฐาน lthai_employee_names_qa เรียบร้อย ตรวจ Docker เหลือฐาน lthai และชุด lthai-docker ชุดเดียว หลักฐานส่วนตัว mapping/logs/env อยู่ใน `.qa/employee-name-parts/` นอก Git
+- ขั้นถัดไปใช้งานเว็บหลักพอร์ต3001 และติดตามข้อเสนอแนะ ข้อมูลด้านล่างเป็นบันทึกการเตรียม QA ก่อนนำขึ้น
+
+- ผู้ใช้ขอนำ Markdown ส่วนตัวนอก Git จากชีตพนักงานปี 2569 คอลัมน์ B, C, D, G, H มาเพิ่มเติมและแก้ไข `employees`
+- ยืนยันแล้วว่าเพิ่มคนที่ยังไม่มี แก้คนเดิม เก็บพนักงานที่ไม่อยู่ในไฟล์ทั้งหมด และช่องว่างในไฟล์ต้องไม่ล้างค่าเดิม
+- ตรวจอ่านอย่างเดียวพบข้อมูลต้นทาง 36 คน จับคู่ชื่อรวมคำนำหน้ากับฐาน Docker หลักได้ครบ 36 คนแบบไม่ซ้ำ ฐานหลักมี 37 คน จึงยังไม่พบคนที่ต้องเพิ่ม
+- ผู้ใช้ยืนยันคืนศูนย์นำหน้าที่หายจากการแปลง Excel จำนวน 8 ช่อง ใช้เลขประจำตัวจากไฟล์แทนค่าทดสอบเดิมของรายการที่ขัดกัน และแก้คำนำหน้าที่สะกดผิดเป็น “นางสาว” แล้ว ดำเนินการเฉพาะ QA พร้อมแก้ Markdown ส่วนตัวนอก Git ให้ตรง Excel
+- ผู้ใช้เพิ่มขอบเขตให้ออกแบบการเก็บคำนำหน้า ชื่อ และนามสกุลแยกกัน รวมถึงฟอร์มเพิ่ม/แก้ไขพนักงาน และตรวจส่วนเชื่อมโยงก่อนดำเนินการ
+- ผู้ใช้เลือก B: เลิกเก็บ employees.name ใช้ prefix/first_name/last_name และปรับผู้เรียกทั้งหมด คำนำหน้าว่างหรืออื่น ๆ ได้ ชื่อจำเป็น นามสกุลว่างได้ รองรับหลายคำ
+- ผู้ใช้อนุมัติ [แบบแยกส่วนชื่อพนักงาน](superpowers/specs/2026-11-19-employee-name-parts-design.md) ใช้ [แผนดำเนินการ](superpowers/plans/2026-11-19-employee-name-parts.md) และบันทึก [ADR การเก็บชื่อแยกส่วน](adr/0005-employee-name-parts.md)
+- สำรอง Docker หลักใหม่ที่ `data/backups/employee-names-qa-25691119-091708-420/lthai.dump` พร้อม SHA-256 และกู้เป็นฐาน `lthai_employee_names_qa` ก่อน migration/test ตรวจ current_database และจำนวน 37 คนแล้ว
+- QA เลิกเก็บ employees.name ใช้สามช่องทั้งหมด ย้ายครบ 37 คนตาม mapping ส่วนตัว: 36 คนจากไฟล์และเก็บคนที่ 37 พร้อมคำนำหน้าว่าง เลขประจำตัวตามที่อนุมัติ รหัส/id/ข้อมูลอื่นและความเชื่อมโยงยังเดิม ตารางที่ไม่เกี่ยวข้อง 30 ตาราง fingerprints ตรง snapshot
+- API/web/ตัวนำเข้า/legacy mapping/ตัวเลือกพนักงานและชื่อในงานปั๊ม-งานชุบปรับแล้ว ชื่อบัญชีผู้ใช้แยกตามเดิม API ปฏิเสธ payload name แบบเก่า ฐานเก่าที่ไม่มี reviewed mapping จะไม่เริ่ม migration อัตโนมัติ
+- `npm run check`, `npm test` (ผ่าน 103 ข้าม 5 รายการเดิมที่ต้องใช้ Python), production build และ Python extraction regression 1 รายการผ่าน ผู้ตรวจอิสระไม่พบประเด็นสำคัญหลังแก้คำนำหน้าอื่น ๆ บังคับกรอกและ extractor ส่งสามช่อง
+- ตรวจ Chrome QA: ป้ายชื่อครบ 37 คน เพิ่ม/แก้ไข/อ่านกลับ ชื่อหลายคำ นามสกุลว่าง คำนำหน้าอื่น ๆ ไม่ยอมรับว่าง สลับตัวเลือกไม่เก็บค่าเก่า ค้นหา บัญชีที่เชื่อมพนักงาน งานปั๊ม/งานชุบ และมือถือ 390px ผ่าน ไม่มี page error แก้ชื่อช่วยอ่านบนปุ่มตารางเป็น aria-label เพื่อไม่ให้ absolute span ทำหน้ามือถือล้น
+- Node QA เดิมพอร์ต3133/4133 และฐานทดสอบถูกปิด/ลบหลังนำขึ้นหลักแล้ว ห้ามใช้ env QA เดิมโดยไม่สร้างฐานแยกและตรวจเป้าหมายใหม่
 
 ## เลขประจำตัวและเบอร์โทรในฟอร์มพนักงาน เปิดใช้บนชุดหลักแล้ว
 
