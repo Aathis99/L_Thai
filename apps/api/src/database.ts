@@ -2,6 +2,7 @@ import pg from 'pg';
 import { migrateColorChart } from './color-chart/schema.js';
 import { migratePressing } from './pressing/schema.js';
 import { migrateFinishing } from './finishing/schema.js';
+import { migrateKilnWorkflow } from './kiln-workflow/schema.js';
 
 export type Db = pg.Pool | pg.PoolClient;
 const pressingPermissions = {
@@ -88,6 +89,7 @@ export async function migrate(pool:pg.Pool){
     await migratePressing(db);
     await migrateColorChart(db);
     await migrateFinishing(db);
+    await migrateKilnWorkflow(db);
     for (const { id, name, permissions } of baselineRoles)
       await db.query('INSERT INTO roles(id,name,permissions) VALUES($1,$2,$3) ON CONFLICT(id) DO NOTHING',[id,name,JSON.stringify(permissions)]);
     await grantAdminProductionPermissions(db);

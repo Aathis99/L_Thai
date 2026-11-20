@@ -334,7 +334,7 @@ export async function recordIssue(db: Db, body: Body, actor: Recorder & { permis
   const { id, issued_at } = await one(db, `INSERT INTO pressing_issues(request_id,request_payload,type_id,order_id,
     destination,confirmed_ready,pooled,issued_by,issued_at,finishing_ready,finishing_clay)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,clock_timestamp(),
-      EXISTS (SELECT 1 FROM pressing_orders WHERE id=$4 AND customer_pieces IS NOT NULL),
+      EXISTS (SELECT 1 FROM pressing_orders WHERE id=$4 AND (customer_pieces IS NOT NULL OR (purpose='stock' AND production_destination IS NOT NULL))),
       $9)
     RETURNING id,issued_at::text`,
   [requestId, payload, typeId, orderId, destination, confirmedReady, pooled, actor.id, clay]);
@@ -396,8 +396,8 @@ export async function reverseIssue(db: Db, issueId: number, body: Body, actor: R
     return { issue_line_id: id, pieces, previous_pieces };
   });
   const finishing = await one(db, 'SELECT net_pieces,glazed_pieces FROM finishing_issues WHERE id=$1', [issueId]);
-  const { loaded } = await one(db, `SELECT coalesce(sum(pieces),0)::double precision AS loaded
-    FROM firing_loads WHERE issue_id=$1 AND batch_id IS NULL`, [issueId]);
+  const { loaded } = await one(db, `SELECT (coalesce((SELECT sum(pieces) FROM firing_loads WHERE issue_id=$1 AND batch_id IS NULL),0)+
+    coalesce((SELECT sum(pieces) FROM kiln_workflow_debits WHERE issue_id=$1 AND batch_id IS NULL),0))::double precision AS loaded`, [issueId]);
   if (finishing.net_pieces - returns.reduce((sum, line) => sum + line.pieces, 0) < finishing.glazed_pieces + loaded)
     fail('ยอดหลังคืนต่ำกว่ายอดที่บันทึกงานชุบหรือเข้าเตาแล้ว', 409);
 

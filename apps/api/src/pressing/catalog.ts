@@ -102,7 +102,14 @@ export async function createOrder(db: Db, body: Body): Promise<number> {
     return (await one(db, `INSERT INTO pressing_orders(type_id,target_pieces,purpose,customer_reference)
       VALUES($1,$2,$3,$4) RETURNING id`, [typeId, target, purpose, reference])).id;
   }
-  if (purpose !== 'customer') fail('กรุณาระบุออเดอร์ลูกค้า');
+  if (purpose === 'stock') {
+    if (body.customer_pieces !== undefined || body.allowance_percent !== undefined) fail('งานสั่งเก็บสต็อกใช้ยอดเป้าหมาย ไม่ระบุยอดลูกค้าหรือยอดเผื่อ');
+    const target=integer(body.target_pieces,'ยอดสั่งผลิตเก็บสต็อก');
+    const color=type.destination==='color' ? await one(db,'SELECT id,name FROM color_chart_entries WHERE id=$1',[integer(body.color_id,'สีเคลือบ')]) : null;
+    if(type.destination==='color'&&!color)fail('ไม่พบสีเคลือบที่เลือก');
+    return (await one(db,`INSERT INTO pressing_orders(type_id,target_pieces,purpose,customer_reference,color_id,color_name,pieces_per_sqm,production_destination,production_clay)
+      VALUES($1,$2,'stock',$3,$4,$5,$6,$7,$8) RETURNING id`,[typeId,target,reference,color?.id??null,color?.name??null,type.pieces_per_sqm,type.destination,type.clay])).id;
+  }
   const details = await orderProductionDetails(db, type.destination, body);
   return (await one(db, `INSERT INTO pressing_orders(type_id,target_pieces,purpose,customer_reference,
     customer_pieces,allowance_percent,allowance_pieces,color_id,color_name,pieces_per_sqm,production_destination,production_clay)
