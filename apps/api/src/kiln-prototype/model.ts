@@ -11,6 +11,7 @@ export interface Item {
   id: string; orderKey: string; reference: string; name: string; clay: string; color: string;
   purpose: 'customer' | 'stock'; target: number; rate: number; ready: number; readyOn: string;
   clayRange?: Range; colorRange?: Range; shapeRange?: Range; accepted: Grade[]; synthetic: boolean;
+  productId?:number|null;productName?:string|null;productCode?:string|null;requiresMesh?:boolean;clayColor?:string|null;
 }
 export interface Plan { id: number; sourceId: string; kilnId: number; rail: number; date: string; pieces: number; unit: string; input: number; temperature: number; cancelled?: boolean }
 export interface Reservation { id: number; planId: number; sourceId: string; kilnId: number; rail: number; pieces: number; status: 'reserved' | 'loaded' | 'cancelled' }

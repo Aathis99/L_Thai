@@ -5,6 +5,7 @@ import {all,one,transaction,audit,type Db} from '../database.js';
 import {listSources,setRange} from '../finishing/firing.js';
 import {transition,sources,summarize,rootItem,loadById,type Item,type Model,type Command} from '../kiln-prototype/model.js';
 import {differences} from '../kiln-prototype/store.js';
+import {assertMeshSources,meshState} from '../tile-catalog/mesh.js';
 
 type Recorder={id:number;username:string};
 type LiveItem=Item&{orderId:number;typeId:number;colorId:number|null};
@@ -27,7 +28,8 @@ async function catalog(db:Db):Promise<LiveItem[]>{
  return orders.map(o=>{
   const batches=ready.filter(v=>v.order_id===o.id);
   return {id:'order:'+o.id,orderKey:'order:'+o.id,orderId:o.id,typeId:o.type_id,colorId:o.color_id,
-   reference:o.customer_reference||`สั่งเก็บสต็อก #${o.id}`,name:`${o.width}×${o.length} ${o.name??''}`.trim(),
+   reference:o.customer_reference||`สั่งเก็บสต็อก #${o.id}`,name:o.product_snapshot?`${o.product_snapshot.product_code} · ${o.product_snapshot.name}${o.requires_mesh?' · ติดตาข่าย':''}`:`${o.width??''}×${o.length??''} ${o.name??''}`.trim(),
+   productId:o.product_id,productName:o.product_snapshot?.name??null,productCode:o.product_snapshot?.product_code??null,requiresMesh:o.requires_mesh,clayColor:o.production_clay_color,
    clay:o.production_clay??o.type_clay,color:o.color_name??'',purpose:o.purpose,
    target:Math.max(0,(o.customer_pieces??o.target_pieces)-o.legacy_ready),rate:Number(o.pieces_per_sqm??o.type_rate??0),
    ready:batches.reduce((n,b)=>n+Number(b.waiting_pieces),0)+(held.find(h=>h.order_id===o.id)?.pieces??0),
@@ -40,7 +42,12 @@ async function readLocked(db:Db){
  const row=await one(db,'SELECT revision,state FROM kiln_workflow_state WHERE id=1');
  const state:Model={...row.state,items:await catalog(db)};
  const events=await all(db,`SELECT id,revision,actor,recorded_at,payload->'command' command,before_state,after_state FROM kiln_workflow_events ORDER BY id DESC LIMIT 100`);
- return {revision:row.revision as number,catalogVersion:catalogVersion(state.items),state,summary:summarize(state),sources:sources(state),copiedItems:[] as Item[],
+ const summary=summarize(state),mesh=await meshState(db);
+ const meshOrders=new Set(mesh.orders.map(o=>o.id));
+ const meshAllocated=await one(db,`SELECT coalesce(sum(a.pieces),0)::integer pieces FROM kiln_workflow_allocations a JOIN pressing_orders o ON o.id=a.order_id WHERE o.requires_mesh AND a.destination='order'`);
+ const completedWorkflow=mesh.entries.filter(e=>!e.voided_at&&meshOrders.has(e.order_id)).flatMap(e=>e.lines).filter(l=>l.key.startsWith('workflow:')).reduce((n,l)=>n+l.pieces,0);
+ summary.orderReady=Math.max(0,summary.orderReady-meshAllocated.pieces)+completedWorkflow;
+ return {revision:row.revision as number,catalogVersion:catalogVersion(state.items),state,summary,sources:sources(state),copiedItems:[] as Item[],
   history:events.map(({before_state,after_state,...event})=>({...event,changes:differences(before_state,after_state)}))};
 }
 export function readWorkflow(db:Db):ReturnType<typeof readLocked>{
@@ -128,6 +135,7 @@ export async function saveWorkflow(db:Db,body:any,actor:Recorder){
  for(const item of state.items as LiveItem[])if(used.has(item.id))await db.query('INSERT INTO kiln_workflow_sources VALUES($1,$2,$3) ON CONFLICT(source_id) DO NOTHING',[item.id,item.orderId,item.typeId]);
  const input=await debitSources(db,state);
  await projectAllocations(db,state,actor);
+ await assertMeshSources(db);
  if(await one(db,`SELECT 1 FROM finished_stock_receipts r WHERE r.voided_at IS NULL AND EXISTS (
   SELECT 1 FROM firing_qc_loads x JOIN firing_loads l ON l.id=x.load_id JOIN finishing_order_balances b ON b.id=l.order_id
   WHERE x.qc_id=r.qc_id AND b.missing_pieces>0) LIMIT 1`))fail('ต้องปรับรายการรับสต็อกเดิมก่อนลดจำนวนที่กันให้ออเดอร์',409);

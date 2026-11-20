@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import pg from 'pg';
 import { reorderEmployeeColumns } from '../src/employee-column-order.js';
 
-const expectedDatabase = 'lthai_column_order_qa';
+const expectedDatabase = process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).pathname.slice(1) : '';
 const order = ['id','code','prefix','first_name','last_name','department','position_id','phone','active','archived','created_at','updated_at','social_security_number','taxpayer_id'];
 let serial = 0;
 async function fixture(work: (pool: pg.Pool) => Promise<void>) {
@@ -12,6 +12,7 @@ async function fixture(work: (pool: pg.Pool) => Promise<void>) {
   const schema = `column_order_${process.pid}_${++serial}`;
   let pool: pg.Pool | undefined;
   try {
+    assert.match(expectedDatabase,/^lthai_.*_qa$/);
     assert.equal((await admin.query('SELECT current_database() AS db')).rows[0].db, expectedDatabase);
     await admin.query(`CREATE SCHEMA ${schema}`);
     pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, options: `-c search_path=${schema},pg_catalog` });

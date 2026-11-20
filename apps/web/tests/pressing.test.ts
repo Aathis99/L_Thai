@@ -8,6 +8,7 @@ import {
   openingStockPayload,
   pressingEntryPayload,
   workerName,
+  tileName,
   type PressingData,
   type ProductionOrder,
   type TileType,
@@ -22,6 +23,20 @@ const tile: TileType = {
   pieces_per_rack: 2, rest_days: 1, destination: "kiln", pieces_per_sqm: null, active: true,
 };
 const catalog = { orders: [order], types: [{ ...tile, id: 3, pieces_per_rack: 1 }, tile] };
+
+test("single dimension and unknown geometry never display a fabricated dimension", () => {
+ assert.equal(tileName([{ ...tile, width: 2, length: null }], tile.id), "2 · ดินแดง");
+ assert.equal(tileName([{ ...tile, width: null, length: null }], tile.id), "ไม่ระบุขนาด · ดินแดง");
+});
+
+test("new pressing entries validate rack counts using the order snapshot", () => {
+ const form = entryForm();
+ form.set("full_racks", "1073741824");
+ assert.throws(() => pressingEntryPayload(form, "key", { ...catalog,
+  orders: [{ ...order, production_pieces_per_rack: 3 }] }), /ยอดปั๊ม/);
+ assert.equal(pressingEntryPayload(form, "key", { ...catalog,
+  orders: [{ ...order, production_pieces_per_rack: 1 }] }).full_racks, 1073741824);
+});
 
 test("worker labels compose structured names and retain historical entry fallback", () => {
   const data: PressingData = {

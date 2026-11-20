@@ -1,0 +1,50 @@
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import {randomUUID} from 'node:crypto';
+import {transaction} from '../src/database.js';
+import {tileFixture,productInput,bodyInput,profileInput} from './tile-test-helpers.js';
+
+test('partial mesh completion is idempotent, source-bound and reversible without extra production',async t=>{
+ const f=await tileFixture(t);
+ const b=await f.call('/catalog/bodies','POST',bodyInput);
+ const p=await f.call('/catalog/products','POST',{...productInput,body_id:b.body.id,mounting_type:'mesh'});
+ const profile=await f.call('/catalog/profiles','POST',{...profileInput,body_id:b.body.id});
+ const color=(await f.pool.query("INSERT INTO color_chart_entries(display_order,name,normalized_name) VALUES(1,'QA','qa') RETURNING id")).rows[0].id;
+ const order=await f.call('/pressing/orders','POST',{product_id:p.body.id,type_id:profile.body.id,purpose:'customer',customer_reference:'QA-MESH',customer_pieces:1000,allowance_percent:10,color_id:color});
+ assert.equal(order.status,201);
+ const orderId=order.body.id;
+ await f.pool.query(`INSERT INTO kiln_workflow_allocations(id,qc_id,order_id,type_id,clay,color_id,color_name,grade,destination,pieces,recorded_at,recorded_by)
+  VALUES(101,50,$1,$2,'ขาว',$3,'QA','A+','order',1000,now(),1)`,[orderId,profile.body.id,color]);
+ let mesh=await f.call('/finishing/mesh');
+ assert.equal(mesh.status,200,'mesh work queue must be available');
+ let item=mesh.body.orders.find((o:any)=>o.id===orderId);
+ assert.equal(item.waiting_pieces,1000);assert.equal(item.ready_pieces,0);
+ const request={request_id:randomUUID(),order_id:orderId,lines:[{key:'workflow:101',pieces:400}]};
+ const saved=await f.call('/finishing/mesh','POST',request);assert.equal(saved.status,201);
+ assert.equal((await f.call('/finishing/mesh','POST',request)).body.id,saved.body.id);
+ mesh=await f.call('/finishing/mesh');item=mesh.body.orders.find((o:any)=>o.id===orderId);
+ assert.equal(item.completed_pieces,400);assert.equal(item.waiting_pieces,600);assert.equal(item.ready_pieces,400);
+ const shipping=(await f.call('/finishing/orders')).body.items.find((o:any)=>o.id===orderId);
+ assert.equal(shipping.ready_pieces,400);assert.equal(shipping.allocated_pieces,1000);assert.equal(shipping.waiting_mesh_pieces,600);
+ assert.equal((await f.call('/finishing/mesh','POST',{...request,request_id:randomUUID(),lines:[{key:'workflow:101',pieces:601}]})).status,409);
+ const balance=(await f.pool.query('SELECT ready_pieces,missing_pieces FROM finishing_order_balances WHERE id=$1',[orderId])).rows[0];
+ assert.equal(Number(balance.ready_pieces),1000);assert.equal(Number(balance.missing_pieces),0);
+ const kiln=await f.call('/kiln/state');assert.equal(kiln.status,200);
+ assert.equal((await f.call('/kiln/action','POST',{request_id:randomUUID(),revision:kiln.body.revision,catalog_version:kiln.body.catalogVersion,command:{op:'correct'}})).status,409,'projection cannot delete an allocation consumed by mesh');
+ const {assertMeshSources}=await import('../src/tile-catalog/mesh.js');
+ await assert.rejects(transaction(f.pool,async db=>{await db.query('UPDATE kiln_workflow_allocations SET pieces=399 WHERE id=101');await assertMeshSources(db);}),/ติดตาข่าย/);
+ await assert.rejects(transaction(f.pool,async db=>{await db.query("UPDATE kiln_workflow_allocations SET grade='A-' WHERE id=101");await assertMeshSources(db);}),/ติดตาข่าย/);
+ await transaction(f.pool,async db=>{
+  const rows=(await db.query('SELECT * FROM kiln_workflow_allocations WHERE id=101')).rows;
+  await db.query('DELETE FROM kiln_workflow_allocations WHERE id=101');
+  await db.query(`INSERT INTO kiln_workflow_allocations SELECT * FROM jsonb_populate_recordset(NULL::kiln_workflow_allocations,$1)`,[JSON.stringify(rows)]);
+  await assertMeshSources(db);
+ });
+ assert.equal((await f.call('/finishing/mesh/'+saved.body.id+'/void','POST',{request_id:randomUUID(),reason:'นับผิด'})).status,201);
+ item=(await f.call('/finishing/mesh')).body.orders.find((o:any)=>o.id===orderId);
+ assert.equal(item.ready_pieces,0);assert.equal(item.waiting_pieces,1000);
+ const simultaneous=await Promise.all([1,2].map(()=>f.call('/finishing/mesh','POST',{request_id:randomUUID(),order_id:orderId,lines:[{key:'workflow:101',pieces:700}]})));
+ assert.deepEqual(simultaneous.map(r=>r.status).sort(),[201,409]);
+ assert.equal((await f.call('/finishing/mesh')).body.orders.find((o:any)=>o.id===orderId).ready_pieces,700);
+ assert.equal((await f.call('/finishing/mesh','GET',undefined,'')).status,401);
+});

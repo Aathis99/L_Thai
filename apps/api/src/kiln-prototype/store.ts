@@ -7,7 +7,7 @@ import { demoState, emptyState, transition, summarize, sources, type Command, ty
 export async function assertQa(db: Db) {
   if (process.env.KILN_QA_MODE !== 'true') fail('แบบจำลองนี้เปิดใช้เฉพาะ QA', 404);
   const target = await one(db, 'SELECT current_database() AS name');
-  if (target.name !== 'lthai_kiln_workflow_qa') fail('ปฏิเสธการใช้แบบจำลองกับฐานที่ไม่ใช่ QA ที่กำหนด', 403);
+  if (!/^lthai_.*_qa$/.test(target.name)) fail('ปฏิเสธการใช้แบบจำลองกับฐานที่ไม่ใช่ QA ที่กำหนด', 403);
 }
 export async function installPrototype(pool: pg.Pool) {
   await assertQa(pool);

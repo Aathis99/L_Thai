@@ -6,7 +6,8 @@ import type { Api } from "../../lib/types";
 import { Field } from "../fields";
 import { Card, Facts, FormDialog, Section } from "../pressing/shared";
 
-type FinishedItem = { type_id: number; clay: string; color_name: string | null;grade?:string|null };
+type FinishedItem = { type_id: number; product_id?: number | null; product_name?: string | null; product_code?: string | null;
+  production_clay_color?: string | null; clay: string; color_name: string | null;grade?:string|null };
 type Candidate = FinishedItem & { id: number; round_id: number; stock_available: number; voided_at: string | null };
 type Receipt = FinishedItem & { id: number; qc_id: number; color_id: number | null; pieces: number;
   recorded_by_username: string; recorded_at: string; voided_at: string | null;workflow?:boolean };
@@ -45,7 +46,8 @@ export default function FinishedStock({ api, canManage }: { api: Api; canManage:
 
   const pending = data?.qc.filter(item => !item.voided_at && item.stock_available > 0) ?? [];
   const totals = finishedStockTotals(data?.receipts ?? []);
-  const tile = (item: FinishedItem) => finishingTileName(data?.types ?? [], item.type_id, item.clay);
+  const tile = (item: FinishedItem) => [item.product_name ? `${item.product_code ?? ""} · ${item.product_name}` : null,
+    finishingTileName(data?.types ?? [], item.type_id, item.clay), item.production_clay_color ? `สีที่ผสม ${item.production_clay_color}` : null].filter(Boolean).join(" · ");
   const receiving = editor?.kind === "receive";
 
   return <div className="pressing-stack">

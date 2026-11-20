@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { visibleCategoryTabs, type CategoryTab } from "../../lib/category";
-import type { TileType } from "../../lib/pressing";
+import type { CatalogState } from "../../lib/tile-catalog";
 import type { Api, SessionUser } from "../../lib/types";
 import ColorChartPanel from "../color-chart/panel";
 import Catalog from "../pressing/catalog";
@@ -10,11 +10,11 @@ import { CategoryRecords, type CategoryRecordsProps } from "./records";
 import TemperatureRanges, { loadRanges } from "./ranges";
 
 async function loadTiles(api: Api) {
-  return (await api<{ items: TileType[] }>("/pressing/types")).items;
+  return api<CatalogState>("/catalog/state");
 }
 
-function TileCatalog({ data, api, user, onSaved }: CategoryRecordsProps<TileType[]>) {
-  return <Catalog data={{ types: data }} actions={{ api, onSaved, can: permission => user.permissions.includes(permission) }} />;
+function TileCatalog({ data, api, user, onSaved }: CategoryRecordsProps<CatalogState>) {
+  return <Catalog data={data} actions={{ api, onSaved, can: permission => user.permissions.includes(permission) }} />;
 }
 
 export default function CategoryPanel({ api, user }: { api: Api; user: SessionUser }) {

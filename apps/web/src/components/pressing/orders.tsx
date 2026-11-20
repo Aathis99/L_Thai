@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { count, formInteger, formText, orderName, orderPurposes, tileName, type PressingData, type ProductionOrder, type TileType } from "../../lib/pressing";
+import { count, destinations, formInteger, formText, orderName, orderPurposes, tileName, type PressingData, type ProductionOrder, type TileType } from "../../lib/pressing";
+import { catalogOrderSelection, productLabel, productProfiles, profileLabel, sizeUnits, type CatalogState } from "../../lib/tile-catalog";
 import { Field } from "../fields";
 import { Card, Choice, Facts, FormDialog, Section, type PressingActions } from "./shared";
 
@@ -14,6 +15,7 @@ export default function Orders({ data, actions }: { data: PressingData; actions:
   const manage = actions.can("pressing.manage");
   const prepare = actions.can("finishing.read") && actions.can("finishing.prepare");
   const activeTypes = data.types.filter((tile) => tile.active);
+  const readyProducts = data.catalog?.products.filter(product => productProfiles(product, data.catalog!.profiles).length) ?? [];
   const dialog = { api: actions.api, onSaved: actions.onSaved, onClose: () => setEditor(null) };
   const deleting = editor?.kind === "delete" && editor.order;
   const currentOrder = deleting && data.orders.find((order) => order.id === deleting.id);
@@ -21,11 +23,11 @@ export default function Orders({ data, actions }: { data: PressingData; actions:
   return (
     <>
       <Section title="ใบสั่งผลิต" action={manage && (
-        <button className="button primary" disabled={!activeTypes.length} onClick={() => setEditor({ kind: "order" })}>
+        <button className="button primary" disabled={!readyProducts.length} onClick={() => setEditor({ kind: "order" })}>
           เพิ่มใบสั่งผลิต
         </button>
       )}>
-        {manage && !activeTypes.length && <p>เพิ่มประเภทกระเบื้องที่เมนูหมวดหมู่ → ทะเบียนกระเบื้องก่อนเปิดใบสั่งผลิต</p>}
+        {manage && !readyProducts.length && <p>ตรวจยืนยันแบบดินปั๊มและค่าผลิตรายดินที่เมนูหมวดหมู่ → ทะเบียนกระเบื้องก่อนเปิดใบสั่งผลิต</p>}
         {data.orders.length ? (
           <div className="pressing-cards">
             {data.orders.map((order) => (
@@ -40,8 +42,17 @@ export default function Orders({ data, actions }: { data: PressingData; actions:
                   </>
                 )}
               >
-                <p>{tileName(data.types, order.type_id)}</p>
+                {order.product_name && <p>{order.product_code} · {order.product_name}</p>}
+                <p>{order.production_clay ? `ดิน${order.production_clay}${order.production_clay_color ? ` · สีที่ผสม ${order.production_clay_color}` : ""}` : tileName(data.types, order.type_id)}</p>
+                {order.product_snapshot && <p>{[order.product_snapshot.shape,
+                  order.product_snapshot.size_1 == null ? null : `${order.product_snapshot.size_1}${order.product_snapshot.size_2 == null ? "" : ` × ${order.product_snapshot.size_2}`} ${sizeUnits[order.product_snapshot.size_unit ?? ""] ?? order.product_snapshot.size_unit ?? ""}`,
+                  order.product_snapshot.thickness_mm == null ? null : `หนา ${order.product_snapshot.thickness_mm} มม.`].filter(Boolean).join(" · ")}</p>}
                 <Facts values={{
+                  ...(order.product_id ? { "การติดตาข่าย": order.requires_mesh ? "ต้องติดตาข่ายหลัง QC" : "ไม่ระบุตาข่าย",
+                    "แผ่นต่อไม้ ณ เปิดใบ": order.production_pieces_per_rack == null ? null : count(order.production_pieces_per_rack),
+                    "วันพัก ณ เปิดใบ": order.production_rest_days == null ? null : count(order.production_rest_days),
+                    "แผ่นต่อ ตร.ม. ณ เปิดใบ": order.pieces_per_sqm == null ? null : count(order.pieces_per_sqm),
+                    "ปลายทาง ณ เปิดใบ": order.production_destination ? destinations[order.production_destination] : null } : {}),
                   ...(order.customer_pieces != null ? {
                     "ยอดลูกค้าสั่ง (แผ่น)": count(order.customer_pieces),
                     [`ยอดเผื่อ ${order.allowance_percent}% (แผ่น)`]: count(order.allowance_pieces ?? 0),
@@ -59,7 +70,7 @@ export default function Orders({ data, actions }: { data: PressingData; actions:
           </div>
         ) : <p>ยังไม่มีใบสั่งผลิต</p>}
       </Section>
-      {editor?.kind === "order" && manage && <OrderForm types={activeTypes} colors={data.colors} {...dialog} />}
+      {editor?.kind === "order" && manage && <OrderForm types={activeTypes} colors={data.colors} catalog={data.catalog} {...dialog} />}
       {editor?.kind === "prepare" && prepare && <OrderForm types={data.types} colors={data.colors} legacy={editor.order} {...dialog} />}
       {editor?.kind === "target" && manage && (
         <FormDialog {...dialog} title="แก้ยอดสั่งปั๊ม" path={`/orders/${editor.order.id}`} method="PUT" submitLabel="บันทึกยอดสั่งปั๊ม"
@@ -85,23 +96,32 @@ export default function Orders({ data, actions }: { data: PressingData; actions:
 
 type DialogProps = Pick<PressingActions, "api" | "onSaved"> & { onClose: () => void };
 
-function OrderForm({ types, colors, legacy, ...dialog }: DialogProps & {
-  types: TileType[]; colors: PressingData["colors"]; legacy?: ProductionOrder;
+function OrderForm({ types, colors, legacy, catalog, ...dialog }: DialogProps & {
+  types: TileType[]; colors: PressingData["colors"]; legacy?: ProductionOrder; catalog?: CatalogState;
 }) {
   const [typeId, setTypeId] = useState(legacy ? String(legacy.type_id) : "");
+  const [productId, setProductId] = useState("");
+  const [search, setSearch] = useState("");
   const [purpose,setPurpose]=useState<'customer'|'stock'>(legacy?.purpose??'customer');
   const [customer, setCustomer] = useState(0);
   const [percent, setPercent] = useState(10);
-  const type = types.find((tile) => tile.id === Number(typeId));
+  const product = catalog?.products.find(item => item.id === Number(productId));
+  const profiles = product ? productProfiles(product, catalog?.profiles ?? []) : [];
+  const type = legacy ? types.find((tile) => tile.id === legacy.type_id) : profiles.find(item => item.id === Number(typeId));
+  const mesh = product?.mounting_type === "mesh";
+  const products = catalog?.products.filter(item => item.active && (String(item.id) === productId ||
+    productLabel(item).toLocaleLowerCase("th").includes(search.trim().toLocaleLowerCase("th")))) ?? [];
   const allowance = Math.ceil(customer * percent / 100);
   return (
     <FormDialog {...dialog} title={legacy ? "เติมข้อมูลใบสั่งผลิตค้าง" : "เพิ่มใบสั่งผลิต"}
       scope={legacy ? "finishing" : "pressing"} path={legacy ? "/prepare-order" : "/orders"}
       intent={legacy ? "warning" : "success"}
       keyField="request_id" submitLabel="บันทึกใบสั่งผลิต"
+      submitDisabled={!legacy && (!type || (mesh && purpose !== "customer"))}
       build={(form) => ({
         ...(legacy ? { order_id: legacy.id } : {
-          type_id: formInteger(form, "type_id", "ประเภทกระเบื้อง"), purpose,
+          ...catalogOrderSelection(catalog?.products ?? [], catalog?.profiles ?? [],
+            formInteger(form, "product_id", "รายการสินค้า"), formInteger(form, "type_id", "ประเภทดินและสีที่ผสม"), purpose), purpose,
           customer_reference: formText(form, "customer_reference"),
         }),
         ...(purpose==='customer'?{customer_pieces:formInteger(form,'customer_pieces','ยอดลูกค้าสั่ง'),allowance_percent:formInteger(form,'allowance_percent','เปอร์เซ็นต์เผื่อ')}:{target_pieces:formInteger(form,'target_pieces','ยอดสั่งเก็บสต็อก')}),
@@ -111,9 +131,17 @@ function OrderForm({ types, colors, legacy, ...dialog }: DialogProps & {
       <div className="form-grid">
         {legacy ? <p>{orderName(legacy)} · {tileName(types, legacy.type_id)}</p> : <>
           <Choice label="ที่มาของใบสั่งผลิต" name="purpose" value={purpose} onChange={v=>setPurpose(v as 'customer'|'stock')}
-            options={[{value:'customer',label:'ตามออเดอร์ลูกค้า'},{value:'stock',label:'ผลิตเก็บสต็อก'}]} />
-          <Choice label="ประเภทกระเบื้อง" name="type_id" value={typeId} onChange={setTypeId}
-            options={types.map((tile) => ({ value: tile.id, label: tileName(types, tile.id) }))} />
+            options={mesh ? [{value:'customer',label:'ตามออเดอร์ลูกค้า'}] : [{value:'customer',label:'ตามออเดอร์ลูกค้า'},{value:'stock',label:'ผลิตเก็บสต็อก'}]} />
+          <Field label="ค้นหารหัสหรือชื่อสินค้า" name="product_search" type="search" value={search} onChange={event => setSearch(event.target.value)} />
+          <Choice label="รายการสินค้าและรุ่น" name="product_id" value={productId} onChange={value => {
+            setProductId(value); setTypeId("");
+            if (catalog?.products.find(item => item.id === Number(value))?.mounting_type === "mesh") setPurpose("customer");
+          }} options={products.map(item => ({ value: item.id,
+            label: `${productLabel(item)}${productProfiles(item, catalog?.profiles ?? []).length ? "" : " · รอตั้งค่าผลิต"}` }))} />
+          <Choice label="ประเภทดิน / สีที่ผสม" name="type_id" value={typeId} onChange={setTypeId}
+            options={profiles.map(item => ({ value: item.id, label: profileLabel(item) }))} />
+          {product && !profiles.length && <p className="helper">สินค้านี้ยังไม่มีค่าผลิตครบ กรุณาตั้งค่าที่ทะเบียนกระเบื้องก่อนเปิดใบสั่ง</p>}
+          {product && <p className="helper">{mesh ? "รุ่นติดตาข่าย ต้องมีออเดอร์ลูกค้า นับกระเบื้องย่อยเป็นแผ่น และพร้อมส่งหลังยืนยันติดตาข่ายเสร็จ" : "รุ่นนี้ไม่ระบุตาข่าย"}</p>}
           <Field label={purpose==='customer'?'เลขอ้างอิงออเดอร์':'เลขอ้างอิงงานสั่งเก็บสต็อก'} name="customer_reference" required={purpose==='customer'} />
         </>}
         {type?.destination === "color" && <Choice label="สีเคลือบ" name="color_id"
@@ -123,6 +151,8 @@ function OrderForm({ types, colors, legacy, ...dialog }: DialogProps & {
         {purpose==='customer'&&<Field label="เปอร์เซ็นต์เผื่อ" name="allowance_percent" type="number" min={5} max={20} step={1} defaultValue={10}
           onChange={event => setPercent(Number(event.target.value))} required />}
       </div>
+      {type && !legacy && <Facts values={{ "แผ่นต่อไม้": count(type.pieces_per_rack), "วันพัก": count(type.rest_days),
+        "แผ่นต่อ ตร.ม.": type.pieces_per_sqm == null ? null : count(type.pieces_per_sqm), "ปลายทาง": destinations[type.destination] }} />}
       <Facts values={{ ...(purpose==='customer'?{'ยอดเผื่อ (แผ่น)':count(allowance)}:{}), "ยอดสั่งปั๊ม (แผ่น)": count(customer + (purpose==='customer'?allowance:0)),
         "พื้นที่สั่งปั๊ม (ตร.ม.)": type?.pieces_per_sqm ? count((customer + (purpose==='customer'?allowance:0)) / type.pieces_per_sqm) : null }} />
     </FormDialog>

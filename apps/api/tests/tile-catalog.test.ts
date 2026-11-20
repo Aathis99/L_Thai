@@ -27,6 +27,7 @@ test('tile catalog retains variants and enables only explicitly configured clay 
  const laterite=await f.call('/catalog/profiles','POST',{...profileInput,body_id:body.body.id,clay:'ศิลาแลง'});assert.equal(laterite.status,201);
  state=await f.state();assert.equal(state.profiles.length,4);assert.equal(state.profiles.find((p:any)=>p.id===profile.body.id).length,null);
  const color=(await f.pool.query("INSERT INTO color_chart_entries(display_order,name,normalized_name) VALUES(1,'QA','qa') RETURNING id")).rows[0].id;
+ assert.equal((await f.call('/pressing/orders','POST',{type_id:profile.body.id,purpose:'customer',customer_reference:'ไม่มีสินค้า',customer_pieces:10,allowance_percent:10,color_id:color})).status,400,'a linked customer profile cannot bypass product selection');
  const order=await f.call('/pressing/orders','POST',{request_id:randomUUID(),product_id:a.body.id,type_id:profile.body.id,purpose:'customer',customer_reference:'QA-ORDER',customer_pieces:1000,allowance_percent:10,color_id:color});
  assert.equal(order.status,201);
  assert.equal((await f.call('/pressing/orders','POST',{product_id:b.body.id,type_id:profile.body.id,purpose:'stock',target_pieces:10,color_id:color})).status,400);
@@ -37,6 +38,9 @@ test('tile catalog retains variants and enables only explicitly configured clay 
  const saved=(await f.call('/pressing/orders')).body.items.find((o:any)=>o.id===order.body.id);
  assert.equal(saved.production_pieces_per_rack,40);assert.equal(saved.production_rest_days,0);assert.equal(saved.pieces_per_sqm,90);
  assert.equal(saved.product_name,'แผ่นทดสอบ');assert.equal(saved.requires_mesh,false);
+ const worker=(await f.pool.query("INSERT INTO employees(code,first_name) VALUES('QA-SNAPSHOT','ทดสอบ') RETURNING id")).rows[0].id;
+ const entry=await f.call('/pressing/entries','POST',{request_id:randomUUID(),order_id:order.body.id,pressed_on:'2026-11-20',employee_id:worker,full_racks:1,loose_pieces:0});assert.equal(entry.status,201);
+ const recorded=(await f.pool.query('SELECT pieces,rest_days,pieces_per_sqm FROM pressing_entries WHERE id=$1',[entry.body.id])).rows[0];assert.deepEqual(recorded,{pieces:40,rest_days:0,pieces_per_sqm:90});
  assert.equal((await f.call('/catalog/profiles/'+profile.body.id,'PUT',{...profileInput,body_id:body.body.id,clay:'แดง'})).status,409);
  await migrate(f.pool);
  assert.equal((await f.state()).products.length,2);
@@ -54,4 +58,6 @@ test('catalog migration preserves referenced legacy profile and normalizes opera
  assert.deepEqual(row,{id:before,clay:'ศิลาแลง'});
  assert.equal((await f.pool.query('SELECT type_id FROM pressing_orders')).rows[0].type_id,before);
  assert.equal((await f.state()).products.length,0);
+ const different=await f.call('/catalog/bodies','POST',bodyInput);
+ assert.equal((await f.call('/catalog/profiles/'+before,'PUT',{...profileInput,clay:'ศิลาแลง',body_id:different.body.id})).status,409,'linking a legacy profile must not change the shape of existing work');
 });

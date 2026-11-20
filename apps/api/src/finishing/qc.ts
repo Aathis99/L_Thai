@@ -34,11 +34,11 @@ export async function recordQc(db: Db, body: Body, actor: Recorder) {
     const round = await requireRound(db, roundId);
     if (!round.finished_on) fail('กรุณาบันทึกเผาเสร็จก่อนคัด', 409);
     if (date < round.finished_on) fail('วันที่คัดต้องตรงกับหรือหลังวันที่เผาเสร็จ');
-    const loads = await all(db, `SELECT id,type_id,clay,color_id,order_id,unsorted_pieces FROM firing_load_balances
-      WHERE round_id=$1 AND id=ANY($2::integer[]) ORDER BY id`, [roundId, lines.map(l => l.load_id)]);
+    const loads = await all(db, `SELECT l.id,l.type_id,l.clay,l.color_id,l.order_id,l.unsorted_pieces,o.product_id FROM firing_load_balances l
+      JOIN pressing_orders o ON o.id=l.order_id WHERE l.round_id=$1 AND l.id=ANY($2::integer[]) ORDER BY l.id`, [roundId, lines.map(l => l.load_id)]);
     if (loads.length !== lines.length) fail('รายการเข้าเตาไม่ตรงกับรอบที่เลือก', 409);
     const first = loads[0];
-    if (loads.some(l => l.type_id !== first.type_id || l.clay !== first.clay || l.color_id !== first.color_id))
+    if (loads.some(l => l.type_id !== first.type_id || l.clay !== first.clay || l.color_id !== first.color_id || l.product_id!==first.product_id))
       fail('กองคัดรวมต้องเป็นประเภทกระเบื้องและสีเดียวกัน', 409);
     if (lines.some((line, index) => line.pieces > loads[index].unsorted_pieces)) fail('จำนวนที่คัดเกินยอดรอคัด QC', 409);
     const { id } = await one(db, `INSERT INTO firing_qc(round_id,sorted_on,good_pieces,waste_pieces,recorded_by)
@@ -124,10 +124,14 @@ export function correctQc(db: Db, body: Body, actor: Recorder) {
 }
 
 export function listReceipts(db: Db) {
-  return all(db, `SELECT r.*,u.username AS recorded_by_username,NULL::text AS grade,false AS workflow
+  return all(db, `SELECT r.*,u.username AS recorded_by_username,NULL::text AS grade,false AS workflow,
+      o.product_id,o.product_snapshot->>'name' product_name,o.product_snapshot->>'product_code' product_code,o.production_clay_color
     FROM finished_stock_receipts r JOIN users u ON u.id=r.recorded_by
-    UNION ALL SELECT -a.id,a.qc_id,a.type_id,a.color_id,a.color_name,a.pieces,a.recorded_by,a.recorded_at,NULL::timestamptz,a.clay,u.username,a.grade,true
-    FROM kiln_workflow_allocations a JOIN users u ON u.id=a.recorded_by WHERE a.destination='stock'
+    LEFT JOIN LATERAL (SELECT l.order_id FROM firing_qc_loads x JOIN firing_loads l ON l.id=x.load_id WHERE x.qc_id=r.qc_id ORDER BY l.id LIMIT 1) origin ON true
+    LEFT JOIN pressing_orders o ON o.id=origin.order_id
+    UNION ALL SELECT -a.id,a.qc_id,a.type_id,a.color_id,a.color_name,a.pieces,a.recorded_by,a.recorded_at,NULL::timestamptz,a.clay,u.username,a.grade,true,
+      o.product_id,o.product_snapshot->>'name',o.product_snapshot->>'product_code',o.production_clay_color
+    FROM kiln_workflow_allocations a JOIN users u ON u.id=a.recorded_by JOIN pressing_orders o ON o.id=a.order_id WHERE a.destination='stock'
     ORDER BY recorded_at DESC,id DESC`);
 }
 

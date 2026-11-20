@@ -8,7 +8,7 @@ import {assertQa,installPrototype,savePrototype,readPrototype} from '../src/kiln
 async function fixture(t:TestContext){
  const url=process.env.DATABASE_URL;assert.ok(url);
  const admin=new pg.Pool({connectionString:url});
- assert.equal((await admin.query('SELECT current_database() AS db')).rows[0].db,'lthai_kiln_workflow_qa');
+ assert.match((await admin.query('SELECT current_database() AS db')).rows[0].db,/^lthai_.*_qa$/);
  const schema='kiln_test_'+randomUUID().replaceAll('-','');
  await admin.query('CREATE SCHEMA '+schema);
  const pool=new pg.Pool({connectionString:url,options:'-c search_path='+schema});

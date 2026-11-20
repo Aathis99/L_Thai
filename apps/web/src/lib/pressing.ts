@@ -1,12 +1,14 @@
 import { formatEmployeeName, type EmployeeNameParts } from "./employee-names.ts";
+import type { CatalogState } from "./tile-catalog.ts";
 
 export type Destination = "color" | "kiln";
 export type Allocation = "general" | "order";
 
 export interface TileType {
   id: number;
-  width: number;
-  length: number;
+  width: number | null;
+  length: number | null;
+  body_id?: number | null;
   clay: string;
   name: string | null;
   clay_color: string | null;
@@ -29,6 +31,17 @@ export interface ProductionOrder {
   color_name?: string | null;
   target_square_meters?: number | null;
   production_clay?: string | null;
+  production_clay_color?: string | null;
+  production_pieces_per_rack?: number | null;
+  production_rest_days?: number | null;
+  production_destination?: Destination | null;
+  pieces_per_sqm?: number | null;
+  product_id?: number | null;
+  product_name?: string | null;
+  product_code?: string | null;
+  product_snapshot?: { name?: string; product_code?: string; shape?: string | null; size_1?: number; size_2?: number | null;
+    size_unit?: string; thickness_mm?: number | null; mounting_type?: string | null } | null;
+  requires_mesh?: boolean;
   pressed_pieces: number;
   short_pieces: number;
   over_pieces: number;
@@ -125,6 +138,7 @@ export interface IssueReversal {
 }
 
 export interface PressingData {
+  catalog?: CatalogState;
   colors: { id: number; name: string }[];
   types: TileType[];
   orders: ProductionOrder[];
@@ -164,7 +178,8 @@ export function count(value: number): string {
 export function tileName(types: readonly TileType[], id: number): string {
   const tile = types.find((item) => item.id === id);
   if (!tile) return `ประเภท #${id}`;
-  const description = `${tile.width} × ${tile.length} · ดิน${tile.clay}`;
+  const dimensions = [tile.width, tile.length].filter(value => value !== null).join(" × ") || "ไม่ระบุขนาด";
+  const description = `${dimensions} · ดิน${tile.clay}${tile.clay_color ? ` · สีที่ผสม ${tile.clay_color}` : ""}`;
   return tile.name ? `${tile.name} · ${description}` : description;
 }
 
@@ -238,7 +253,7 @@ export function pressingEntryPayload(form: FormData, requestId: string, data: Pi
   return {
     request_id: requestId,
     order_id: orderId,
-    ...entryFormValues(form, tile.pieces_per_rack),
+    ...entryFormValues(form, order?.production_pieces_per_rack ?? tile.pieces_per_rack),
   };
 }
 

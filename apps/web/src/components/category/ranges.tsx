@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { formInteger, formText } from "../../lib/pressing";
+import { clays } from "../../lib/tile-catalog";
 import type { Api } from "../../lib/types";
 import { Field } from "../fields";
 import { Card, Choice, FormDialog, Section } from "../pressing/shared";
@@ -44,7 +45,7 @@ export default function TemperatureRanges({ data, api, user, onSaved }: Category
       <Choice label="ตั้งช่วงสำหรับ" name="kind" value={kind} onChange={setKind}
         options={[{ value: "clay", label: "ประเภทดิน" }, { value: "color", label: "สีเคลือบ" }]} />
       {kind === "clay" ? <Choice label="ประเภทดิน" name="clay"
-        options={["แดง", "ขาว", "จ้อ", "สี"].map(value => ({ value, label: value }))} /> :
+        options={clays.map(value => ({ value, label: value }))} /> :
         <Choice label="สีเคลือบ" name="color_id" options={data.colors.map(color => ({ value: color.id, label: color.name }))} />}
       <Field name="minimum" label="ต่ำสุด (°C)" type="number" step={1} min={1} required />
       <Field name="maximum" label="สูงสุด (°C)" type="number" step={1} min={1} required />

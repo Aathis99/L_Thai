@@ -7,6 +7,8 @@ import { Field } from "../fields";
 import { FormDialog } from "../pressing/shared";
 
 type Order = { id: number; customer_reference: string; type_id: number; clay: string; color_name: string | null;
+  product_id?: number | null; product_code?: string | null; product_name?: string | null;
+  requires_mesh?: boolean; allocated_pieces?: number; waiting_mesh_pieces?: number;
   customer_pieces: number; ready_pieces: number; missing_pieces: number };
 export type Issue = { id: number; type_id: number; clay: string; order_id: number; customer_reference: string; destination: "color" | "kiln";
   color_name: string | null; finishing_ready: boolean; customer_pieces: number | null; net_pieces: number; unglazed_pieces: number };
@@ -19,6 +21,7 @@ type Load = { id: number; order_id: number; issue_id: number; batch_id: number |
   pieces: number; unsorted_pieces: number };
 export type Round = { id: number; kiln: string; temperature: number; started_on: string; finished_on: string | null; loads: Load[] };
 type Qc = { id: number; round_id: number; sorted_on: string; good_pieces: number; waste_pieces: number; allocated_pieces: number;
+  product_id?: number | null; product_code?: string | null; product_name?: string | null; production_clay_color?: string | null;
   unallocated_pieces: number; stocked_pieces: number; stock_available: number; orders: number[]; type_id: number;
   clay: string; color_name: string | null; voided_at: string | null; loads: { id: number; order_id: number; pieces: number }[];
   allocations: { id: number; order_id: number; pieces: number; voided_at: string | null }[] };
@@ -30,6 +33,7 @@ type Editor = Pick<ComponentProps<typeof FormDialog>, "title" | "path" | "build"
 type Common = "types" | "orders";
 
 export interface FinishingActions {
+  refresh: () => Promise<void>;
   tileName: (id: number, clay: string) => string;
   orderName: (id: number) => string;
   can: (permission: string) => boolean;
@@ -91,6 +95,7 @@ export default function FinishingPage<K extends keyof Data>({ api, user, resourc
     setEditor({ title, path, build, children, intent });
   };
   const actions: FinishingActions = {
+    refresh,
     tileName: (id, clay) => finishingTileName(data?.types ?? [], id, clay),
     orderName: id => {
       const order = data?.orders.find(item => item.id === id);

@@ -4,12 +4,13 @@ import type { Api, SessionUser } from "../../lib/types";
 import { Field } from "../fields";
 import { Card, Choice, Facts, Section } from "../pressing/shared";
 import FinishingPage, { action, DateField, NumberField, number } from "./shared";
+import MeshPanel from "./mesh";
 
 const resources = ["rounds", "qc"] as const;
 
 export default function QcPage({ api, user, initialRoundId, openFinishedStock }: { api: Api; user: SessionUser; initialRoundId?: number; openFinishedStock: () => void; }) {
   return <FinishingPage api={api} user={user} resources={resources}>
-    {(data, { can, open, reverse, orderName, tileName }) => {
+    {(data, { can, open, reverse, orderName, tileName, refresh }) => {
       const orders = data.orders;
       const queue = data.rounds.map(round => ({ round, pending: pendingQcLoads(round) }))
         .filter(({ pending }) => pending.length > 0);
@@ -67,6 +68,7 @@ export default function QcPage({ api, user, initialRoundId, openFinishedStock }:
               reverse("ยกเลิกผลคัด", "/qc-void", "qc_id", qc.id)}
           </>}>
             <p>{qc.sorted_on} · {tileName(qc.type_id, qc.clay)}{qc.color_name && ` · ${qc.color_name}`}</p>
+            {qc.product_name && <p>{qc.product_code} · {qc.product_name}{qc.production_clay_color && ` · สีที่ผสม ${qc.production_clay_color}`}</p>}
             <p>{qc.orders.map(orderName).join(" / ")}</p>
             <Facts values={{ "แผ่นดี": count(qc.good_pieces), "แผ่นเสีย": count(qc.waste_pieces), "กันให้ออเดอร์": count(qc.allocated_pieces),
               "รอจัดสรร": qc.voided_at ? null : count(qc.unallocated_pieces - qc.stock_available), "ส่วนเกินพร้อมรับเข้า": count(qc.stock_available),
@@ -88,11 +90,12 @@ export default function QcPage({ api, user, initialRoundId, openFinishedStock }:
         <Section title="ยอดพร้อมส่งตามใบสั่ง">
           {!orders.length && <p>ยังไม่มีข้อมูลออเดอร์สำหรับงานผลิต</p>}
           <div className="pressing-cards">{orders.map(order => <Card key={order.id} title={orderName(order.id)}>
+            {order.product_name && <p>{order.product_code} · {order.product_name}</p>}
             <p>{tileName(order.type_id, order.clay)}{order.color_name && ` · ${order.color_name}`}</p>
             <Facts values={{ "ยอดลูกค้าสั่ง": count(order.customer_pieces), "พร้อมส่ง": count(order.ready_pieces), "ยอดขาด": count(order.missing_pieces) }} />
           </Card>)}</div>
         </Section>
-
+        <MeshPanel api={api} user={user} refreshToken={data.qc} onChanged={refresh} />
       </>;
     }}
   </FinishingPage>;

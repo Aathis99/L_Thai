@@ -138,7 +138,7 @@ export function FormDialog({
   api: Api;
   title: string;
   path: string;
-  scope?: "pressing" | "finishing";
+  scope?: "pressing" | "finishing" | "catalog";
   method?: "POST" | "PUT" | "DELETE";
   intent?: "success" | "warning";
   keyField?: "request_id" | "source_key";

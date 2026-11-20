@@ -52,14 +52,20 @@ export async function saveProfile(db:Db,body:Body,id?:number){
   const used=await one(db,`SELECT EXISTS(SELECT 1 FROM pressing_orders WHERE type_id=$1) OR EXISTS(SELECT 1 FROM pressing_stock_sources WHERE type_id=$1) AS used`,[id]);
   // Explicitly linking a legacy identity is allowed; reassigning an already-linked, used identity is not.
   if(used.used&&(current.clay!==body.clay||(current.body_id!==null&&current.body_id!==bodyId)||(body.clay==='สี'&&current.clay_color!==clayColor)))fail('ประเภทผลิตมีประวัติอ้างอิงแล้ว เปลี่ยนดินหรือแบบไม่ได้',409);
+  if(used.used&&current.body_id===null&&(current.width!==tileBody.size_1||current.length!==tileBody.size_2||tileBody.size_unit!=='in'))fail('ขนาดประเภทเดิมกับแบบดินปั๊มไม่ตรงกัน กรุณาตรวจหน้างานก่อนจับคู่',409);
+  if(used.used){values[3]=current.name;if(body.clay!=='สี')values[4]=current.clay_color;}
  }
- if(await one(db,`SELECT id FROM pressing_types WHERE body_id=$1 AND clay=$2 AND lower(coalesce(clay_color,''))=lower(coalesce($3,'')) AND ($4::integer IS NULL OR id<>$4)`,[bodyId,body.clay,clayColor,id??null]))fail('มีค่าผลิตของดินและสีดินนี้แล้ว',409);
+ if(await one(db,`SELECT id FROM pressing_types WHERE body_id=$1 AND clay=$2 AND (clay<>'สี' OR lower(coalesce(clay_color,''))=lower(coalesce($3,''))) AND ($4::integer IS NULL OR id<>$4)`,[bodyId,body.clay,clayColor,id??null]))fail('มีค่าผลิตของดินและสีดินนี้แล้ว',409);
  const row=id?await one(db,`UPDATE pressing_types SET width=$1,length=$2,clay=$3,name=$4,clay_color=$5,pieces_per_rack=$6,rest_days=$7,destination=$8,pieces_per_sqm=$9,body_id=$10 WHERE id=$11 RETURNING id`,[...values,id]):await one(db,`INSERT INTO pressing_types(width,length,clay,name,clay_color,pieces_per_rack,rest_days,destination,pieces_per_sqm,body_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,values);
  return row.id as number;
 }
 
 export async function validateProductOrder(db:Db,body:Body,typeId:number){
- if(body.product_id==null)return null;
+ if(body.product_id==null){
+  const profile=await one(db,'SELECT body_id FROM pressing_types WHERE id=$1',[typeId]);
+  if(profile?.body_id&&body.purpose==='customer')fail('กรุณาเลือกสินค้าสำหรับใบสั่งลูกค้า');
+  return null;
+ }
  const product=await one(db,'SELECT * FROM tile_products WHERE id=$1',[integer(body.product_id,'สินค้า')]);
  if(!product||!product.active||!product.body_id)fail('สินค้ายังไม่พร้อมผลิต กรุณาตรวจแบบดินปั๊มและค่าผลิต');
  const profile=await one(db,'SELECT * FROM pressing_types WHERE id=$1',[typeId]);

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PressingData } from "../../lib/pressing";
+import type { CatalogState } from "../../lib/tile-catalog";
 import type { Api, SessionUser } from "../../lib/types";
 import Inventory from "./inventory";
 import Orders from "./orders";
@@ -29,11 +30,12 @@ export default function PressingPanel({ api, user, stockOnly = false }: { api: A
       return (await api<{ items: PressingData[K] }>(`/pressing/${path}`)).items;
     };
     try {
-      const [types, orders, workers, entries, stock, issues, colors] = await Promise.all([
+      const [types, orders, workers, entries, stock, issues, colors, catalog] = await Promise.all([
         list("types"), list("orders"), stockOnly ? [] : list("workers"), stockOnly ? [] : list("entries"),
         stockOnly ? list("stock") : [], stockOnly ? list("issues") : [], stockOnly ? [] : list("colors"),
+        stockOnly ? undefined : api<CatalogState>("/catalog/state"),
       ]);
-      if (latest.current === version) setData({ types, orders, workers, entries, stock, issues, colors });
+      if (latest.current === version) setData({ types, orders, workers, entries, stock, issues, colors, catalog });
     } catch (cause) {
       if (latest.current === version) {
         setError(cause instanceof TypeError ? "เชื่อมต่อเพื่อโหลดข้อมูลงานปั๊มไม่สำเร็จ" :

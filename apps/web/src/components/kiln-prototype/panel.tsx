@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Api, SessionUser } from '../../lib/types';
 import { Field } from '../fields';
+import MeshPanel from '../finishing/mesh';
 import { Card, Choice, Facts, FormDialog, Section } from '../pressing/shared';
 import { DefectFields, NumberInput, PlanForm, PolicyFields, QcFields, RailFields, TimeInput, readQc } from './forms';
 import { type Command, type Data, type Source, atField, dateTime, fieldNumber as n, fieldText as t, grades, operationNames, outcomeNames, qty, selectedGrades } from './types';
@@ -144,6 +145,7 @@ export default function KilnPrototype({ api, user, initialTab = 'ภาพรว
           {grades.map(g => <p key={g}>{g} คงรอจัดสรร {qty(q.counts[g] - sum(state.allocations.filter(a => a.qcId === q.id && a.grade === g).map(a => a.pieces)))}</p>)}
         </Card>;
       })}</div></Section>
+      {!qa && <MeshPanel api={api} user={user} refreshToken={data} onChanged={async () => { await refresh(); }} />}
     </>}
     {tab === 'ซ่อม/เผาซ้ำ' && <Section title="คิวซ่อมและของพร้อมกลับเตา"><div className="pressing-cards">{data.sources.filter(s => s.sourceId.startsWith('repair:') && matches(s.sourceId)).map(s => {
       const [, qcId, kind] = s.sourceId.split(':'), q = state.qcs.find(q => q.id === Number(qcId))!, k = kind as 'underfired' | 'touchup';

@@ -2,9 +2,9 @@ import {all,type Db} from '../database.js';
 
 export async function migrateTileCatalog(db:Db){
  // Replace old CHECK expressions without invalidating existing rows midway through the transaction.
- const checks=await all(db,`SELECT c.conrelid::regclass::text AS relation,c.conname,pg_get_constraintdef(c.oid) definition
-  FROM pg_constraint c JOIN pg_namespace n ON n.oid=c.connamespace
-  WHERE n.nspname=current_schema() AND c.contype='c' AND pg_get_constraintdef(c.oid) LIKE '%จ้อ%'`);
+ const checks=await all(db,`WITH owned AS MATERIALIZED (
+  SELECT oid,conrelid,conname FROM pg_constraint WHERE connamespace=(SELECT oid FROM pg_namespace WHERE nspname=current_schema()) AND contype='c'
+ ) SELECT conrelid::regclass::text AS relation,conname,pg_get_constraintdef(oid) definition FROM owned WHERE pg_get_constraintdef(oid) LIKE '%จ้อ%'`);
  const quote=(s:string)=>'"'+s.replaceAll('"','""')+'"';
  for(const c of checks){
   await db.query(`ALTER TABLE ${c.relation} DROP CONSTRAINT ${quote(c.conname)}`);
@@ -28,13 +28,18 @@ export async function migrateTileCatalog(db:Db){
   ALTER TABLE pressing_types ADD COLUMN IF NOT EXISTS body_id integer REFERENCES tile_bodies(id);
   ALTER TABLE pressing_types ALTER COLUMN width DROP NOT NULL;
   ALTER TABLE pressing_types ALTER COLUMN length DROP NOT NULL;
-  CREATE UNIQUE INDEX IF NOT EXISTS pressing_types_body_clay_color ON pressing_types(body_id,clay,lower(coalesce(clay_color,''))) WHERE body_id IS NOT NULL;
+  DROP INDEX IF EXISTS pressing_types_body_clay_color;
+  CREATE UNIQUE INDEX IF NOT EXISTS pressing_types_body_clay_identity ON pressing_types(body_id,clay,(CASE WHEN clay='สี' THEN lower(coalesce(clay_color,'')) ELSE '' END)) WHERE body_id IS NOT NULL;
   ALTER TABLE pressing_orders ADD COLUMN IF NOT EXISTS product_id integer REFERENCES tile_products(id);
   ALTER TABLE pressing_orders ADD COLUMN IF NOT EXISTS product_snapshot jsonb;
   ALTER TABLE pressing_orders ADD COLUMN IF NOT EXISTS requires_mesh boolean NOT NULL DEFAULT false;
   ALTER TABLE pressing_orders ADD COLUMN IF NOT EXISTS production_clay_color text;
   ALTER TABLE pressing_orders ADD COLUMN IF NOT EXISTS production_pieces_per_rack integer;
   ALTER TABLE pressing_orders ADD COLUMN IF NOT EXISTS production_rest_days integer;
+  CREATE TABLE IF NOT EXISTS tile_mesh_entries(
+   id serial PRIMARY KEY,order_id integer NOT NULL REFERENCES pressing_orders(id),pieces integer NOT NULL CHECK(pieces>0),
+   lines jsonb NOT NULL,recorded_by integer NOT NULL REFERENCES users(id),recorded_at timestamptz NOT NULL DEFAULT now(),
+   voided_at timestamptz,voided_by integer REFERENCES users(id),reason text);
   UPDATE pressing_orders o SET production_pieces_per_rack=t.pieces_per_rack,production_rest_days=t.rest_days,
     production_clay_color=t.clay_color FROM pressing_types t
     WHERE t.id=o.type_id AND o.production_pieces_per_rack IS NULL;

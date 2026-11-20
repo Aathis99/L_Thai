@@ -7,6 +7,7 @@ import { correctLoad, createRound, finishRound, listRanges, listRounds, listSour
 import { confirmFinishingIssue, correctGlazing, listFinishingIssues, listGlazing, recordGlazing } from './glazing.js';
 import { allocateGood, correctQc, listQc, listReceipts, receiveStock, recordQc, voidAllocation, voidQc, voidReceipt } from './qc.js';
 import { finishingRequest } from './requests.js';
+import {assertMeshSources} from '../tile-catalog/mesh.js';
 
 const reads = {
   issues: listFinishingIssues,
@@ -22,8 +23,13 @@ const reads = {
     SELECT color_id,min(color_name),NULL FROM pressing_orders o WHERE color_id IS NOT NULL
     AND NOT EXISTS (SELECT 1 FROM color_chart_entries c WHERE c.id=o.color_id) GROUP BY color_id
     ) colors ORDER BY display_order NULLS LAST,id`),
-  orders: (db: PressingAccess['db']) => all(db, `SELECT o.id,o.customer_reference,o.type_id,o.production_clay AS clay,o.color_name,b.customer_pieces,b.ready_pieces,b.missing_pieces
-    FROM finishing_order_balances b JOIN pressing_orders o ON o.id=b.id ORDER BY o.id DESC`),
+  orders: (db: PressingAccess['db']) => all(db, `SELECT o.id,o.customer_reference,o.type_id,o.production_clay AS clay,o.color_name,b.customer_pieces,
+    o.product_id,o.product_snapshot->>'name' product_name,o.product_snapshot->>'product_code' product_code,o.requires_mesh,o.production_clay_color,
+    b.ready_pieces allocated_pieces,
+    CASE WHEN o.requires_mesh THEN coalesce(m.pieces,0) ELSE b.ready_pieces END ready_pieces,
+    CASE WHEN o.requires_mesh THEN b.ready_pieces-coalesce(m.pieces,0) ELSE 0 END waiting_mesh_pieces,b.missing_pieces
+    FROM finishing_order_balances b JOIN pressing_orders o ON o.id=b.id
+    LEFT JOIN (SELECT order_id,sum(pieces)::double precision pieces FROM tile_mesh_entries WHERE voided_at IS NULL GROUP BY order_id) m ON m.order_id=o.id ORDER BY o.id DESC`),
   types: (db: PressingAccess['db']) => all(db, 'SELECT id,width,length,clay,name FROM pressing_types ORDER BY id'),
 };
 
@@ -63,9 +69,11 @@ export async function handleFinishingRoute(req: Request, res: Response, access: 
   }
   if (req.method === 'POST' && Object.hasOwn(writes, resource)) {
     const [permission, run] = writes[resource as keyof typeof writes];
-    const id = await access.mutate(permission, (db, actor) => {
+    const id = await access.mutate(permission, async (db, actor) => {
       if(resource==='rounds'||resource==='loads')fail('งานเข้าเผาใหม่ให้ใช้แผนและเตรียมลงเบอร์ในหน้างานเตา',410);
-      return run(db, req.body ?? {}, actor);
+      const result=await run(db, req.body ?? {}, actor);
+      await assertMeshSources(db);
+      return result;
     });
     res.status(201).json({ id });
     return true;

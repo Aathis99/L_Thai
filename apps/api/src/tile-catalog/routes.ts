@@ -3,6 +3,15 @@ import type {SessionRouteAccess} from '../app.js';
 import {audit} from '../database.js';
 import {fail} from '../auth.js';
 import {catalogState,saveBody,saveProduct,saveProfile} from './catalog.js';
+import {meshState,recordMesh,voidMesh} from './mesh.js';
+
+export async function handleMeshRoute(req:Request,res:Response,access:SessionRouteAccess){
+ if(req.path==='/finishing/mesh'&&req.method==='GET'){access.require('finishing.read');res.json(await meshState(access.db));return true;}
+ const reverse=req.path.match(/^\/finishing\/mesh\/([1-9]\d*)\/void$/);
+ if(req.method!=='POST'||(req.path!=='/finishing/mesh'&&!reverse))return false;
+ const id=await access.mutate(reverse?'finishing.correct':'finishing.allocate',(db,actor)=>reverse?voidMesh(db,Number(reverse[1]),req.body??{},actor):recordMesh(db,req.body??{},actor));
+ res.status(201).json({id});return true;
+}
 
 export async function handleCatalogRoute(req:Request,res:Response,access:SessionRouteAccess){
  if(req.method==='GET'&&req.path==='/catalog/state'){access.require('pressing.read');res.json(await catalogState(access.db));return true;}

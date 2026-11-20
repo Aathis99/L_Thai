@@ -122,7 +122,7 @@ test('pressing catalog, orders and worker selection use session permissions', as
     assert.equal(saved.status, 200);
     assert.deepEqual(saved.body, { id: unused.body.id });
     const updated = (await press('/types')).body.items.find((row: { id: number }) => row.id === unused.body.id);
-    assert.equal(updated.clay, 'จ้อ');
+    assert.equal(updated.clay, 'ศิลาแลง');
     assert.equal(updated.rest_days, 0);
     assert.equal((await press(unusedPath, 'DELETE')).status, 200);
     assert.ok((await press('/types')).body.items.every((row: { id: number }) => row.id !== unused.body.id));
@@ -153,6 +153,8 @@ test('pressing catalog, orders and worker selection use session permissions', as
       ...order, id: created.body.id, target_pieces: 1200,
       customer_pieces: null, allowance_percent: null, allowance_pieces: null, color_id: null, color_name: null,
       pieces_per_sqm: null, target_square_meters: null, production_clay: null,
+      product_id:null,product_snapshot:null,requires_mesh:false,production_clay_color:null,
+      production_pieces_per_rack:750,production_rest_days:4,production_destination:null,product_name:null,product_code:null,
       pressed_pieces: 0, short_pieces: 1200, over_pieces: 0, has_entries: false, has_issues: false,
     });
     const types = await press('/types');

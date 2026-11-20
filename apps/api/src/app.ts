@@ -19,7 +19,7 @@ import { handlePressingRoute } from "./pressing/routes.js";
 import { handleFinishingRoute } from "./finishing/routes.js";
 import { handleKilnPrototype } from "./kiln-prototype/routes.js";
 import { handleKilnWorkflow } from "./kiln-workflow/routes.js";
-import { handleCatalogRoute } from "./tile-catalog/routes.js";
+import { handleCatalogRoute,handleMeshRoute } from "./tile-catalog/routes.js";
 import { normalizeEmployeeNameParts } from "./employee-names.js";
 import {
   ApiError,
@@ -256,6 +256,7 @@ export function createApplication(pool: pg.Pool, options: Options = {}) {
     ) return;
     if (path.startsWith("/kiln-qa/") && (await handleKilnPrototype(req, res, routeAccess("finishing.read")))) return;
     if (path.startsWith("/kiln/") && (await handleKilnWorkflow(req, res, routeAccess("finishing.read")))) return;
+    if(path.startsWith('/finishing/mesh')&&await handleMeshRoute(req,res,routeAccess('finishing.read')))return;
     if (
       path.startsWith("/finishing/") &&
       (await handleFinishingRoute(req, res, routeAccess("finishing.read")))

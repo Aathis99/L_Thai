@@ -1,4 +1,4 @@
-export type FinishingTile = { id: number; width: number; length: number; clay: string; name: string | null };
+export type FinishingTile = { id: number; width: number | null; length: number | null; clay: string; name: string | null; clay_color?: string | null };
 
 export function pendingQcLoads<T extends { unsorted_pieces: number }>(round: {
   finished_on: string | null; loads: readonly T[];
@@ -8,5 +8,6 @@ export function pendingQcLoads<T extends { unsorted_pieces: number }>(round: {
 
 export function finishingTileName(types: readonly FinishingTile[], id: number, clay: string) {
   const tile = types.find(item => item.id === id);
-  return tile ? `${tile.width} × ${tile.length} ดิน${clay}${tile.name ? ` · ${tile.name}` : ""}` : `ประเภท #${id} · ดิน${clay}`;
+  const dimensions = tile && ([tile.width, tile.length].filter(value => value !== null).join(" × ") || "ไม่ระบุขนาด");
+  return tile ? `${dimensions} ดิน${clay}${tile.clay_color ? ` · สีที่ผสม ${tile.clay_color}` : ""}${tile.name ? ` · ${tile.name}` : ""}` : `ประเภท #${id} · ดิน${clay}`;
 }

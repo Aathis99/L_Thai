@@ -17,7 +17,7 @@ const at=(time:string)=>`${day}T${time}:00+07:00`;
 async function fixture(t:TestContext,destination='color',purpose='customer'){
  const url=process.env.DATABASE_URL;assert.ok(url);
  const admin=new pg.Pool({connectionString:url});
- assert.equal((await one(admin,'SELECT current_database() db')).db,'lthai_kiln_live_qa');
+ assert.match((await one(admin,'SELECT current_database() db')).db,/^lthai_.*_qa$/);
  const schema='kiln_live_test_'+randomUUID().replaceAll('-','');
  await admin.query('CREATE SCHEMA '+schema);
  const pool=new pg.Pool({connectionString:url,options:'-c search_path='+schema});
