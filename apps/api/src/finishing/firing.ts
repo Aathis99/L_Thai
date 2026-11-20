@@ -10,9 +10,10 @@ export const firingSources = `WITH sources AS (
   UNION ALL
   SELECT id,NULL,type_id,order_id,customer_reference,NULL,NULL,clay,pieces_per_sqm,least(net_pieces,finishing_confirmed_pieces),
     to_char(issued_at AT TIME ZONE 'Asia/Bangkok','YYYY-MM-DD')
-  FROM finishing_issues WHERE destination='kiln' AND finishing_ready AND customer_pieces IS NOT NULL
+  FROM finishing_issues WHERE destination='kiln' AND finishing_ready AND (customer_pieces IS NOT NULL OR purpose='stock')
 )
-SELECT s.*,s.pieces-coalesce(l.loaded,0) AS waiting_pieces,
+SELECT s.*,s.pieces-coalesce(l.loaded,0)-coalesce((SELECT sum(d.pieces) FROM kiln_workflow_debits d
+  WHERE d.issue_id=s.issue_id AND d.batch_id IS NOT DISTINCT FROM s.batch_id),0) AS waiting_pieces,
   coalesce(l.firing,0) AS firing_pieces,coalesce(l.awaiting_qc,0) AS awaiting_qc_pieces,
   coalesce(l.completed,0) AS completed_pieces,
   c.minimum AS clay_min,c.maximum AS clay_max,g.minimum AS color_min,g.maximum AS color_max

@@ -17,6 +17,8 @@ import {
 import { COLOR_CHART_IMAGE_PATH, handleColorChartRoute } from "./color-chart/routes.js";
 import { handlePressingRoute } from "./pressing/routes.js";
 import { handleFinishingRoute } from "./finishing/routes.js";
+import { handleKilnPrototype } from "./kiln-prototype/routes.js";
+import { handleKilnWorkflow } from "./kiln-workflow/routes.js";
 import { normalizeEmployeeNameParts } from "./employee-names.js";
 import {
   ApiError,
@@ -30,6 +32,7 @@ import {
 } from "./auth.js";
 
 type Options = {
+  cookieName?: 'session' | 'kiln_qa_session';
   origins?: string[];
   secureCookies?: boolean;
   internalHosts?: string[];
@@ -54,6 +57,7 @@ function identifier(value: unknown, label: string) {
   return result;
 }
 export function createApplication(pool: pg.Pool, options: Options = {}) {
+  const cookieName = options.cookieName ?? 'session';
   const origins = new Set(
     options.origins || ["http://127.0.0.1:3000", "http://localhost:3000"],
   );
@@ -217,11 +221,11 @@ export function createApplication(pool: pg.Pool, options: Options = {}) {
         );
       });
       attempts.delete(key);
-      res.cookie("session", token, { ...cookieOptions, maxAge: 28800000 });
+      res.cookie(cookieName, token, { ...cookieOptions, maxAge: 28800000 });
       return void res.json({ ok: true });
     }
     const token = (req.get("cookie") || "").match(
-      /(?:^|;\s*)session=([a-f0-9]{64})(?:;|$)/,
+      new RegExp(`(?:^|;\\s*)${cookieName}=([a-f0-9]{64})(?:;|$)`),
     )?.[1];
     const user = await actor(pool, token);
     if (!user) fail("กรุณาเข้าสู่ระบบใหม่", 401);
@@ -248,6 +252,8 @@ export function createApplication(pool: pg.Pool, options: Options = {}) {
       path.startsWith("/pressing/") &&
       (await handlePressingRoute(req, res, routeAccess("pressing.read")))
     ) return;
+    if (path.startsWith("/kiln-qa/") && (await handleKilnPrototype(req, res, routeAccess("finishing.read")))) return;
+    if (path.startsWith("/kiln/") && (await handleKilnWorkflow(req, res, routeAccess("finishing.read")))) return;
     if (
       path.startsWith("/finishing/") &&
       (await handleFinishingRoute(req, res, routeAccess("finishing.read")))
@@ -262,7 +268,7 @@ export function createApplication(pool: pg.Pool, options: Options = {}) {
       await pool.query("DELETE FROM sessions WHERE token_hash=$1", [
         digest(token!),
       ]);
-      res.clearCookie("session", cookieOptions);
+      res.clearCookie(cookieName, cookieOptions);
       return void res.json({ ok: true });
     }
     if (path === "/password" && method === "POST") {
@@ -289,7 +295,7 @@ export function createApplication(pool: pg.Pool, options: Options = {}) {
         await db.query("DELETE FROM sessions WHERE user_id=$1", [user.id]);
         await log(db, user.username, "เปลี่ยนรหัสผ่าน", user.username);
       });
-      res.clearCookie("session", cookieOptions);
+      res.clearCookie(cookieName, cookieOptions);
       return void res.json({ ok: true });
     }
     const route = path.match(

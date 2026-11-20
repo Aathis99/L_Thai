@@ -89,6 +89,7 @@ function OrderForm({ types, colors, legacy, ...dialog }: DialogProps & {
   types: TileType[]; colors: PressingData["colors"]; legacy?: ProductionOrder;
 }) {
   const [typeId, setTypeId] = useState(legacy ? String(legacy.type_id) : "");
+  const [purpose,setPurpose]=useState<'customer'|'stock'>(legacy?.purpose??'customer');
   const [customer, setCustomer] = useState(0);
   const [percent, setPercent] = useState(10);
   const type = types.find((tile) => tile.id === Number(typeId));
@@ -100,29 +101,30 @@ function OrderForm({ types, colors, legacy, ...dialog }: DialogProps & {
       keyField="request_id" submitLabel="บันทึกใบสั่งผลิต"
       build={(form) => ({
         ...(legacy ? { order_id: legacy.id } : {
-          type_id: formInteger(form, "type_id", "ประเภทกระเบื้อง"), purpose: "customer",
+          type_id: formInteger(form, "type_id", "ประเภทกระเบื้อง"), purpose,
           customer_reference: formText(form, "customer_reference"),
         }),
-        customer_pieces: formInteger(form, "customer_pieces", "ยอดลูกค้าสั่ง"),
-        allowance_percent: formInteger(form, "allowance_percent", "เปอร์เซ็นต์เผื่อ"),
+        ...(purpose==='customer'?{customer_pieces:formInteger(form,'customer_pieces','ยอดลูกค้าสั่ง'),allowance_percent:formInteger(form,'allowance_percent','เปอร์เซ็นต์เผื่อ')}:{target_pieces:formInteger(form,'target_pieces','ยอดสั่งเก็บสต็อก')}),
         color_id: type?.destination === "color" ? formInteger(form, "color_id", "สีเคลือบ") : null,
       })}
     >
       <div className="form-grid">
         {legacy ? <p>{orderName(legacy)} · {tileName(types, legacy.type_id)}</p> : <>
+          <Choice label="ที่มาของใบสั่งผลิต" name="purpose" value={purpose} onChange={v=>setPurpose(v as 'customer'|'stock')}
+            options={[{value:'customer',label:'ตามออเดอร์ลูกค้า'},{value:'stock',label:'ผลิตเก็บสต็อก'}]} />
           <Choice label="ประเภทกระเบื้อง" name="type_id" value={typeId} onChange={setTypeId}
             options={types.map((tile) => ({ value: tile.id, label: tileName(types, tile.id) }))} />
-          <Field label="เลขอ้างอิงออเดอร์" name="customer_reference" required />
+          <Field label={purpose==='customer'?'เลขอ้างอิงออเดอร์':'เลขอ้างอิงงานสั่งเก็บสต็อก'} name="customer_reference" required={purpose==='customer'} />
         </>}
         {type?.destination === "color" && <Choice label="สีเคลือบ" name="color_id"
           options={colors.map(color => ({ value: color.id, label: color.name }))} />}
-        <Field label="ยอดลูกค้าสั่ง (แผ่น)" name="customer_pieces" type="number" min={1} step={1}
+        <Field label={purpose==='customer'?'ยอดลูกค้าสั่ง (แผ่น)':'ยอดสั่งเก็บสต็อก (แผ่น)'} name={purpose==='customer'?'customer_pieces':'target_pieces'} type="number" min={1} step={1}
           onChange={event => setCustomer(Number(event.target.value))} required />
-        <Field label="เปอร์เซ็นต์เผื่อ" name="allowance_percent" type="number" min={5} max={20} step={1} defaultValue={10}
-          onChange={event => setPercent(Number(event.target.value))} required />
+        {purpose==='customer'&&<Field label="เปอร์เซ็นต์เผื่อ" name="allowance_percent" type="number" min={5} max={20} step={1} defaultValue={10}
+          onChange={event => setPercent(Number(event.target.value))} required />}
       </div>
-      <Facts values={{ "ยอดเผื่อ (แผ่น)": count(allowance), "ยอดสั่งปั๊ม (แผ่น)": count(customer + allowance),
-        "พื้นที่สั่งปั๊ม (ตร.ม.)": type?.pieces_per_sqm ? count((customer + allowance) / type.pieces_per_sqm) : null }} />
+      <Facts values={{ ...(purpose==='customer'?{'ยอดเผื่อ (แผ่น)':count(allowance)}:{}), "ยอดสั่งปั๊ม (แผ่น)": count(customer + (purpose==='customer'?allowance:0)),
+        "พื้นที่สั่งปั๊ม (ตร.ม.)": type?.pieces_per_sqm ? count((customer + (purpose==='customer'?allowance:0)) / type.pieces_per_sqm) : null }} />
     </FormDialog>
   );
 }

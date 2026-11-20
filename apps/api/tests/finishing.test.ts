@@ -215,7 +215,7 @@ test('finished production routes require read and operation permissions independ
     assert.equal((await call('/finishing/rounds', round, cookie)).status, 403);
   }
   const saved = await call('/finishing/rounds', round, admin);
-  assert.equal(saved.status, 201);
+  assert.equal(saved.status, 410);
   assert.deepEqual(await (await call('/finishing/rounds', round, admin)).json(), await saved.json());
 
   const tile = await call('/pressing/types', { width: 1, length: 1, clay: 'แดง',
@@ -242,9 +242,12 @@ test('finished production routes require read and operation permissions independ
   assert.equal((await call('/finishing/ranges', { clay: 'แดง', minimum: 1000, maximum: 1000 }, admin)).status, 201);
   const day = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Bangkok', dateStyle: 'short' }).format(new Date());
   const roundResponse = await call('/finishing/rounds', { ...round, started_on: day, request_id: 'legacy-round' }, admin);
-  assert.equal(roundResponse.status, 201);
-  const { id: round_id } = await roundResponse.json() as { id: number };
+  assert.equal(roundResponse.status, 410);
+  const recorder=await one(pool,"SELECT id,username FROM users WHERE username='admin'");
+  const {createRound,loadRound}=await import('../src/finishing/firing.js');
+  const round_id=await transaction(pool,db=>createRound(db,{...round,started_on:day,request_id:'historical-round'},recorder));
   const directLoad = { issue_id, round_id, pieces: 46, request_id: 'legacy-load' };
-  assert.equal((await call('/finishing/loads', directLoad, admin)).status, 409);
-  assert.equal((await call('/finishing/loads', { ...directLoad, pieces: 45 }, admin)).status, 201);
+  assert.equal((await call('/finishing/loads', directLoad, admin)).status, 410);
+  await assert.rejects(transaction(pool,db=>loadRound(db,directLoad,recorder)),/ยอดรอเผา/);
+  await transaction(pool,db=>loadRound(db,{...directLoad,pieces:45},recorder));
 });

@@ -8,7 +8,7 @@ import FinishingPage, { action, DateField, NumberField, number, type Round, type
 
 const resources = ["issues", "sources", "rounds"] as const;
 
-export default function FiringPage({ api, user, openQc }: { api: Api; user: SessionUser; openQc: (roundId: number) => void; }) {
+export default function FiringPage({ api, user, openQc,legacyOnly=false }: { api: Api; user: SessionUser; openQc: (roundId: number) => void;legacyOnly?:boolean; }) {
   return <FinishingPage api={api} user={user} resources={resources}>
     {(data, { can, open, orderName, tileName }) => {
       const legacyBreeze = data.issues.filter(issue => issue.destination === "kiln" && !issue.finishing_ready && issue.net_pieces > 0);
@@ -35,7 +35,7 @@ export default function FiringPage({ api, user, openQc }: { api: Api; user: Sess
               "รอคัด QC": count(source.awaiting_qc_pieces), "สำเร็จ": count(source.completed_pieces) }} />
           </Card>)}</div>
         </Section>
-        <Section title="รอบเผา" action={can("fire") && action("เปิดรอบเผา", () => open("เปิดรอบเผา", "/rounds",
+        <Section title="รอบเผา" action={!legacyOnly&&can("fire") && action("เปิดรอบเผา", () => open("เปิดรอบเผา", "/rounds",
           form => ({ kiln: formText(form, "kiln"), temperature: number(form, "temperature", "อุณหภูมิ"),
             started_on: formText(form, "started_on") }), <>
             <Field name="kiln" label="ชื่อหรือหมายเลขเตา" required />
@@ -50,7 +50,7 @@ export default function FiringPage({ api, user, openQc }: { api: Api; user: Sess
             return <Card key={round.id} title={`รอบ #${round.id} · เตา ${round.kiln} · ${round.temperature} °C`}
               meta={<span className="badge neutral">{round.finished_on ? (pending.length ? "รอคัด QC" : "สำเร็จ") : (hasPieces ? "กำลังเผา" : "รอลงเตา")}</span>}
               actions={!round.finished_on && can("fire") ? <>
-                {compatible.length > 0 && action("ยืนยันแผ่นเข้าเตา", () => open("ยืนยันแผ่นเข้าเตา", "/loads", form => {
+                {!legacyOnly&&compatible.length > 0 && action("ยืนยันแผ่นเข้าเตา", () => open("ยืนยันแผ่นเข้าเตา", "/loads", form => {
                   const source = compatible[number(form, "source", "งานรอเผา", 0)];
                   return { round_id: round.id, batch_id: source.batch_id, issue_id: source.issue_id, pieces: number(form, "pieces", "จำนวนแผ่น") };
                 }, <LoadForm sources={compatible} />, "success"), "success")}

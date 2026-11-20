@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { all, audit } from '../database.js';
 import { integer, listWorkers, prepareLegacyOrder } from '../pressing/catalog.js';
+import { fail } from '../auth.js';
 import type { PressingAccess } from '../pressing/routes.js';
 import { correctLoad, createRound, finishRound, listRanges, listRounds, listSources, loadRound, setRange } from './firing.js';
 import { confirmFinishingIssue, correctGlazing, listFinishingIssues, listGlazing, recordGlazing } from './glazing.js';
@@ -62,7 +63,10 @@ export async function handleFinishingRoute(req: Request, res: Response, access: 
   }
   if (req.method === 'POST' && Object.hasOwn(writes, resource)) {
     const [permission, run] = writes[resource as keyof typeof writes];
-    const id = await access.mutate(permission, (db, actor) => run(db, req.body ?? {}, actor));
+    const id = await access.mutate(permission, (db, actor) => {
+      if(resource==='rounds'||resource==='loads')fail('งานเข้าเผาใหม่ให้ใช้แผนและเตรียมลงเบอร์ในหน้างานเตา',410);
+      return run(db, req.body ?? {}, actor);
+    });
     res.status(201).json({ id });
     return true;
   }

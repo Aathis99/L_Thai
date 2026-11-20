@@ -22,7 +22,7 @@ export function confirmFinishingIssue(db: Db, body: Body, actor: Recorder) {
   const pieces = integer(body.pieces, 'ยอดค้างที่ตรวจแล้ว');
   return finishingRequest(db, 'confirm-issue', body, { id, pieces }, async () => {
     const issue = await one(db, 'SELECT * FROM finishing_issues WHERE id=$1', [id]);
-    if (!issue?.customer_pieces || (issue.destination === 'color' && !issue.color_id))
+    if (!issue || (!issue.customer_pieces && issue.purpose !== 'stock') || (issue.destination === 'color' && !issue.color_id))
       fail('กรุณาเติมข้อมูลใบสั่งผลิตก่อนยืนยันใบเบิก', 409);
     if (issue.destination !== issue.production_destination)
       fail('ปลายทางใบเบิกต่างจากเส้นทางผลิตของใบสั่ง กรุณาตรวจและแก้ใบเบิกก่อนยืนยัน', 409);
@@ -57,7 +57,7 @@ export async function recordGlazing(db: Db, body: Body, actor: Recorder) {
     const issue = await one(db, `SELECT *,to_char(issued_at AT TIME ZONE 'Asia/Bangkok','YYYY-MM-DD') AS issued_on
       FROM finishing_issues WHERE id=$1`, [issueId]);
     if (!issue || issue.destination !== 'color') fail('ไม่พบใบเบิกไปงานชุบ', 404);
-    if (!issue.finishing_ready || !issue.customer_pieces || !issue.color_id)
+    if (!issue.finishing_ready || (!issue.customer_pieces && issue.purpose !== 'stock') || !issue.color_id)
       fail('กรุณาตรวจยืนยันใบเบิกและข้อมูลใบสั่งผลิตก่อนบันทึกชุบ', 409);
     if (workedOn < issue.issued_on) fail('วันที่ชุบต้องตรงกับหรือหลังวันที่เบิก');
     if (pieces > Math.min(issue.net_pieces, issue.finishing_confirmed_pieces ?? Infinity) - issue.glazed_pieces)
@@ -80,7 +80,8 @@ export function correctGlazing(db: Db, body: Body, actor: Recorder) {
   const reason = pressingText(body.reason, 'เหตุผลที่แก้ผลชุบ', true);
   return finishingRequest(db, 'glazing-correction', body, { id, ...counts, reason }, async () => {
     const row = await one(db, `SELECT b.*,least(i.net_pieces,i.finishing_confirmed_pieces)-i.glazed_pieces+b.pieces AS available,
-      coalesce((SELECT sum(pieces) FROM firing_loads WHERE batch_id=b.id),0)::double precision AS loaded
+      (coalesce((SELECT sum(pieces) FROM firing_loads WHERE batch_id=b.id),0)+
+      coalesce((SELECT sum(pieces) FROM kiln_workflow_debits WHERE batch_id=b.id),0))::double precision AS loaded
       FROM glazing_batches b JOIN finishing_issues i ON i.id=b.issue_id WHERE b.id=$1`, [id]);
     if (!row) fail('ไม่พบชุดงานชุบ', 404);
     if (counts.good < row.loaded) fail('ยอดดีใหม่ต่ำกว่ายอดเข้าเตาแล้ว', 409);

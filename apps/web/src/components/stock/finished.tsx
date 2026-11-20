@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { finishingTileName, type FinishingTile } from "../../lib/finishing";
 import { count, formInteger, formText, timestamp } from "../../lib/pressing";
+import { finishedStockTotals } from "../../lib/stock";
 import type { Api } from "../../lib/types";
 import { Field } from "../fields";
 import { Card, Facts, FormDialog, Section } from "../pressing/shared";
 
-type FinishedItem = { type_id: number; clay: string; color_name: string | null };
+type FinishedItem = { type_id: number; clay: string; color_name: string | null;grade?:string|null };
 type Candidate = FinishedItem & { id: number; round_id: number; stock_available: number; voided_at: string | null };
 type Receipt = FinishedItem & { id: number; qc_id: number; color_id: number | null; pieces: number;
-  recorded_by_username: string; recorded_at: string; voided_at: string | null };
+  recorded_by_username: string; recorded_at: string; voided_at: string | null;workflow?:boolean };
 type Editor = { kind: "receive"; item: Candidate } | { kind: "reverse"; item: Receipt };
 
 export default function FinishedStock({ api, canManage }: { api: Api; canManage: boolean }) {
@@ -43,14 +44,7 @@ export default function FinishedStock({ api, canManage }: { api: Api; canManage:
   }, [refresh]);
 
   const pending = data?.qc.filter(item => !item.voided_at && item.stock_available > 0) ?? [];
-  const totals = new Map<string, FinishedItem & { pieces: number }>();
-  for (const receipt of data?.receipts ?? []) {
-    if (receipt.voided_at) continue;
-    const key = `${receipt.type_id}:${receipt.clay}:${receipt.color_id ?? ""}`;
-    const total = totals.get(key);
-    if (total) total.pieces += receipt.pieces;
-    else totals.set(key, { ...receipt });
-  }
+  const totals = finishedStockTotals(data?.receipts ?? []);
   const tile = (item: FinishedItem) => finishingTileName(data?.types ?? [], item.type_id, item.clay);
   const receiving = editor?.kind === "receive";
 
@@ -73,21 +67,22 @@ export default function FinishedStock({ api, canManage }: { api: Api; canManage:
         </Card>)}</div>
       </Section>
       <Section title="สต็อกสินค้าสำเร็จ">
-        {!totals.size && <p>ยังไม่มียอดสินค้าสำเร็จ</p>}
-        <div className="pressing-cards">{[...totals].map(([key, item]) => <Card key={key} title={tile(item)}>
-          <p>{item.color_name ?? "บรีส"}</p>
+        {!totals.length && <p>ยังไม่มียอดสินค้าสำเร็จ</p>}
+        <div className="pressing-cards">{totals.map(item => <Card key={item.id} title={tile(item)}>
+          <p>{item.color_name ?? "บรีส"} · เกรด {item.grade??'ยังไม่ระบุ (ข้อมูลเดิม)'}</p>
           <Facts values={{ "ยอดรับเข้าสุทธิ (แผ่น)": count(item.pieces) }} />
         </Card>)}</div>
       </Section>
       <Section title="ประวัติรับเข้าสินค้าสำเร็จ">
         {!data.receipts.length && <p>ยังไม่มีรายการรับเข้า</p>}
         <div className="pressing-cards">{data.receipts.map(item => <Card key={item.id}
-          title={`รับเข้า #${item.id} · ${count(item.pieces)} แผ่น`}
+          title={`${item.workflow?'งานเตา · ':''}รับเข้า #${Math.abs(item.id)} · ${count(item.pieces)} แผ่น`}
           meta={item.voided_at && <span className="badge neutral">ย้อนแล้ว</span>}
-          actions={!item.voided_at && canManage && <button className="button warning" onClick={() => setEditor({ kind: "reverse", item })}>
+          actions={!item.workflow && !item.voided_at && canManage && <button className="button warning" onClick={() => setEditor({ kind: "reverse", item })}>
             ย้อนรายการรับเข้า
           </button>}>
           <p>{tile(item)} · {item.color_name ?? "บรีส"} · ผลคัด #{item.qc_id}</p>
+          <p>เกรด {item.grade??'ยังไม่ระบุ (ข้อมูลเดิม)'}{item.workflow?' · ปรับยอดรายการนี้ที่งานเตา → รอบเผาและไฟ → แก้ยอด':''}</p>
           <p>{item.recorded_by_username} · {timestamp(item.recorded_at)}</p>
         </Card>)}</div>
       </Section>

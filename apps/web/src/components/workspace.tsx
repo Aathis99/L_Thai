@@ -3,9 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Auth from "./auth";
 import CategoryPanel from "./category/panel";
-import FiringPage from "./finishing/firing";
+import KilnArea from "./kiln-prototype/area";
 import GlazingPage from "./finishing/glazing";
-import QcPage from "./finishing/qc";
 import Dialog, { type DialogState } from "./dialog";
 import ThemeToggle from "./theme-toggle";
 import { Brand } from "./fields";
@@ -489,10 +488,8 @@ export default function Workspace() {
               <CategoryPanel api={api} user={user} />
             )}
             {view === "glazing" && showFinishing && <GlazingPage api={api} user={user} />}
-            {view === "firing" && showFinishing && <FiringPage api={api} user={user}
-              openQc={roundId => void navigate("qc", { roundId })} />}
-            {view === "qc" && showFinishing && <QcPage api={api} user={user} initialRoundId={qcRound}
-              openFinishedStock={() => void navigate("stock", { stockTab: "finished" })} />}
+            {(view==='firing'||view==='qc')&&showFinishing&&<KilnArea api={api} user={user} qc={view==='qc'} qa={process.env.NEXT_PUBLIC_KILN_QA==='true'}
+              initialRoundId={view==='qc'?qcRound:undefined} openQc={roundId=>void navigate('qc',{roundId})} openStock={()=>void navigate('stock',{stockTab:'finished'})}/>}
             {view === "stock" && showStock && <StockPanel api={api} user={user} initialTab={stockTab} />}
             {recordView && (
               <section className="panel">

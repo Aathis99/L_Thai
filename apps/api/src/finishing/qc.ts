@@ -124,8 +124,11 @@ export function correctQc(db: Db, body: Body, actor: Recorder) {
 }
 
 export function listReceipts(db: Db) {
-  return all(db, `SELECT r.*,u.username AS recorded_by_username
-    FROM finished_stock_receipts r JOIN users u ON u.id=r.recorded_by ORDER BY r.id DESC`);
+  return all(db, `SELECT r.*,u.username AS recorded_by_username,NULL::text AS grade,false AS workflow
+    FROM finished_stock_receipts r JOIN users u ON u.id=r.recorded_by
+    UNION ALL SELECT -a.id,a.qc_id,a.type_id,a.color_id,a.color_name,a.pieces,a.recorded_by,a.recorded_at,NULL::timestamptz,a.clay,u.username,a.grade,true
+    FROM kiln_workflow_allocations a JOIN users u ON u.id=a.recorded_by WHERE a.destination='stock'
+    ORDER BY recorded_at DESC,id DESC`);
 }
 
 export function voidQc(db: Db, body: Body, actor: Recorder) {
@@ -146,6 +149,8 @@ export function voidAllocation(db: Db, body: Body, actor: Recorder) {
   return finishingRequest(db, 'allocation-void', body, { id, reason }, async () => {
     const allocation = await one(db, 'SELECT * FROM firing_qc_allocations WHERE id=$1 AND voided_at IS NULL', [id]);
     if (!allocation) fail('ไม่พบรายการจัดสรรที่ยังย้อนยอดได้', 404);
+    if(await one(db,"SELECT 1 FROM kiln_workflow_allocations WHERE order_id=$1 AND destination='stock' LIMIT 1",[allocation.order_id]))
+      fail('กรุณาปรับรายการรับสต็อกในงานเตาก่อนย้อนยอดจัดสรรใบนี้',409);
     const receipt = await one(db, `SELECT r.id FROM finished_stock_receipts r WHERE r.voided_at IS NULL AND EXISTS (
       SELECT 1 FROM firing_qc_loads x JOIN firing_loads l ON l.id=x.load_id WHERE x.qc_id=r.qc_id AND l.order_id=$1
     ) ORDER BY r.id LIMIT 1`, [allocation.order_id]);
