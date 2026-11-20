@@ -1,5 +1,6 @@
 import { fail, text } from '../auth.js';
 import { all, one, type Db } from '../database.js';
+import {snapshotOrder,validateProductOrder} from '../tile-catalog/catalog.js';
 
 type Body = Record<string, unknown>;
 
@@ -33,18 +34,23 @@ export function pressingText(value: unknown, label: string, required: boolean): 
 
 export function listTypes(db: Db) {
   return all(db, `SELECT id,width,length,clay,name,clay_color,pieces_per_rack,
-    rest_days,destination,pieces_per_sqm,active FROM pressing_types ORDER BY id`);
+    rest_days,destination,pieces_per_sqm,active,body_id FROM pressing_types ORDER BY id`);
 }
 
 export async function saveType(db: Db, body: Body, id?: number): Promise<number> {
-  if (body.clay !== 'แดง' && body.clay !== 'ขาว' && body.clay !== 'จ้อ' && body.clay !== 'สี')
+  const clay=body.clay==='จ้อ'?'ศิลาแลง':body.clay;
+  if (clay !== 'แดง' && clay !== 'ขาว' && clay !== 'ศิลาแลง' && clay !== 'สี')
     fail('กรุณาเลือกประเภทดิน');
+  if(id){
+    const existing=await one(db,'SELECT * FROM pressing_types WHERE id=$1',[id]);
+    if(existing?.body_id)fail('ประเภทผลิตที่เชื่อมแบบดินปั๊มแล้วให้แก้ในทะเบียนสินค้ารายดิน',409);
+  }
   if (body.destination !== 'color' && body.destination !== 'kiln')
     fail('กรุณาเลือกปลายทางเบิก');
   const values = [
     positiveNumber(body.width, 'ความกว้าง'),
     positiveNumber(body.length, 'ความยาว'),
-    body.clay,
+    clay,
     pressingText(body.name, 'ชื่อเรียก', false),
     pressingText(body.clay_color, 'รายละเอียดดินสี', false),
     integer(body.pieces_per_rack, 'จำนวนแผ่นต่อไม้'),
@@ -77,6 +83,8 @@ export function listOrders(db: Db) {
   )
   SELECT o.id,o.type_id,o.target_pieces,o.purpose,o.customer_reference,
     o.customer_pieces,o.allowance_percent,o.allowance_pieces,o.color_id,o.color_name,o.pieces_per_sqm,o.production_clay,
+    o.product_id,o.product_snapshot,o.requires_mesh,o.production_clay_color,o.production_pieces_per_rack,o.production_rest_days,o.production_destination,
+    o.product_snapshot->>'name' AS product_name,o.product_snapshot->>'product_code' AS product_code,
     o.target_pieces / o.pieces_per_sqm AS target_square_meters,
     coalesce(t.pieces,0) AS pressed_pieces,
     greatest(o.target_pieces-coalesce(t.pieces,0),0) AS short_pieces,
@@ -88,6 +96,7 @@ export function listOrders(db: Db) {
 
 export async function createOrder(db: Db, body: Body): Promise<number> {
   const typeId = integer(body.type_id, 'ประเภทกระเบื้อง');
+  const product=await validateProductOrder(db,body,typeId);
   const purpose = body.purpose;
   if (purpose !== 'customer' && purpose !== 'stock') fail('กรุณาเลือกที่มาของใบสั่งผลิต');
   const reference = purpose === 'customer'
@@ -99,23 +108,26 @@ export async function createOrder(db: Db, body: Body): Promise<number> {
   const production = body.customer_pieces !== undefined || body.allowance_percent !== undefined || body.color_id !== undefined;
   if (!production) {
     const target = integer(body.target_pieces, 'ยอดสั่งปั๊ม');
-    return (await one(db, `INSERT INTO pressing_orders(type_id,target_pieces,purpose,customer_reference)
+    const saved=(await one(db, `INSERT INTO pressing_orders(type_id,target_pieces,purpose,customer_reference)
       VALUES($1,$2,$3,$4) RETURNING id`, [typeId, target, purpose, reference])).id;
+    return snapshotOrder(db,saved,product);
   }
   if (purpose === 'stock') {
     if (body.customer_pieces !== undefined || body.allowance_percent !== undefined) fail('งานสั่งเก็บสต็อกใช้ยอดเป้าหมาย ไม่ระบุยอดลูกค้าหรือยอดเผื่อ');
     const target=integer(body.target_pieces,'ยอดสั่งผลิตเก็บสต็อก');
     const color=type.destination==='color' ? await one(db,'SELECT id,name FROM color_chart_entries WHERE id=$1',[integer(body.color_id,'สีเคลือบ')]) : null;
     if(type.destination==='color'&&!color)fail('ไม่พบสีเคลือบที่เลือก');
-    return (await one(db,`INSERT INTO pressing_orders(type_id,target_pieces,purpose,customer_reference,color_id,color_name,pieces_per_sqm,production_destination,production_clay)
+    const saved=(await one(db,`INSERT INTO pressing_orders(type_id,target_pieces,purpose,customer_reference,color_id,color_name,pieces_per_sqm,production_destination,production_clay)
       VALUES($1,$2,'stock',$3,$4,$5,$6,$7,$8) RETURNING id`,[typeId,target,reference,color?.id??null,color?.name??null,type.pieces_per_sqm,type.destination,type.clay])).id;
+    return snapshotOrder(db,saved,product);
   }
   const details = await orderProductionDetails(db, type.destination, body);
-  return (await one(db, `INSERT INTO pressing_orders(type_id,target_pieces,purpose,customer_reference,
+  const saved=(await one(db, `INSERT INTO pressing_orders(type_id,target_pieces,purpose,customer_reference,
     customer_pieces,allowance_percent,allowance_pieces,color_id,color_name,pieces_per_sqm,production_destination,production_clay)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
   [typeId, details.target, purpose, reference, details.customer, details.percent, details.allowance,
     details.color?.id ?? null, details.color?.name ?? null, type.pieces_per_sqm,type.destination,type.clay])).id;
+  return snapshotOrder(db,saved,product);
 }
 
 async function orderProductionDetails(db: Db, destination: string, body: Body) {
@@ -153,7 +165,7 @@ export async function updateOrderTarget(db: Db, id: number, body: Body) {
   const order = await one(db, 'SELECT type_id,purpose,customer_reference,target_pieces,customer_pieces FROM pressing_orders WHERE id=$1', [id]);
   if (!order) fail('ไม่พบใบสั่งผลิต', 404);
   if (order.customer_pieces !== null) fail('ยอดสั่งปั๊มคำนวณจากยอดลูกค้าสั่งและเปอร์เซ็นต์เผื่อ', 409);
-  for (const field of ['type_id', 'purpose', 'customer_reference']) {
+  for (const field of ['type_id', 'purpose', 'customer_reference','product_id','requires_mesh']) {
     if (body[field] !== undefined && body[field] !== order[field])
       fail('แก้ไขได้เฉพาะยอดสั่งปั๊ม', 409);
   }

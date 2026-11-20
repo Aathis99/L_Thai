@@ -52,8 +52,8 @@ export async function setRange(db: Db, body: Body, actor: Recorder) {
     await audit(db, actor.username, 'ตั้งช่วงอุณหภูมิสีเคลือบ', id + ' · ' + min + '–' + max + ' °C');
     return id;
   }
-  const clay = body.clay;
-  if (clay !== 'แดง' && clay !== 'ขาว' && clay !== 'จ้อ' && clay !== 'สี') fail('กรุณาเลือกประเภทดิน');
+  const clay = body.clay==='จ้อ'?'ศิลาแลง':body.clay;
+  if (clay !== 'แดง' && clay !== 'ขาว' && clay !== 'ศิลาแลง' && clay !== 'สี') fail('กรุณาเลือกประเภทดิน');
   await db.query(`INSERT INTO firing_clay_ranges VALUES($1,$2,$3)
     ON CONFLICT(clay) DO UPDATE SET minimum=excluded.minimum,maximum=excluded.maximum`, [clay, min, max]);
   await audit(db, actor.username, 'ตั้งช่วงอุณหภูมิประเภทดิน', clay + ' · ' + min + '–' + max + ' °C');

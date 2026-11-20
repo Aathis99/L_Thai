@@ -19,6 +19,7 @@ import { handlePressingRoute } from "./pressing/routes.js";
 import { handleFinishingRoute } from "./finishing/routes.js";
 import { handleKilnPrototype } from "./kiln-prototype/routes.js";
 import { handleKilnWorkflow } from "./kiln-workflow/routes.js";
+import { handleCatalogRoute } from "./tile-catalog/routes.js";
 import { normalizeEmployeeNameParts } from "./employee-names.js";
 import {
   ApiError,
@@ -248,6 +249,7 @@ export function createApplication(pool: pg.Pool, options: Options = {}) {
         });
       },
     });
+    if(path.startsWith('/catalog/')&&await handleCatalogRoute(req,res,routeAccess('pressing.read')))return;
     if (
       path.startsWith("/pressing/") &&
       (await handlePressingRoute(req, res, routeAccess("pressing.read")))
