@@ -58,6 +58,11 @@ export async function saveType(db: Db, body: Body, id?: number): Promise<number>
     body.destination,
     body.pieces_per_sqm == null ? null : positiveNumber(body.pieces_per_sqm, 'จำนวนแผ่นต่อ ตร.ม.'),
   ];
+  if(id){
+    const current=await one(db,'SELECT * FROM pressing_types WHERE id=$1',[id]);
+    const used=await one(db,`SELECT EXISTS(SELECT 1 FROM pressing_orders WHERE type_id=$1) OR EXISTS(SELECT 1 FROM pressing_stock_sources WHERE type_id=$1) OR EXISTS(SELECT 1 FROM pressing_sort_results WHERE type_id=$1) AS used`,[id]);
+    if(current&&used.used&&['width','length','clay','clay_color'].some((key,i)=>current[key]!==values[[0,1,2,4][i]!]))fail('ประเภทผลิตมีประวัติแล้ว เปลี่ยนขนาดหรือดินไม่ได้',409);
+  }
   const row = id === undefined
     ? await one(db, `INSERT INTO pressing_types(width,length,clay,name,clay_color,pieces_per_rack,
         rest_days,destination,pieces_per_sqm) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`, values)
@@ -105,7 +110,7 @@ export async function createOrder(db: Db, body: Body): Promise<number> {
   const type = await one(db, 'SELECT active,destination,clay,pieces_per_sqm FROM pressing_types WHERE id=$1', [typeId]);
   if (!type) fail('ไม่พบประเภทกระเบื้องที่เลือก');
   if (!type.active) fail('ประเภทกระเบื้องที่เลือกหยุดใช้แล้ว', 409);
-  const production = body.customer_pieces !== undefined || body.allowance_percent !== undefined || body.color_id !== undefined;
+  const production = !!product || body.customer_pieces !== undefined || body.allowance_percent !== undefined || body.color_id !== undefined;
   if (!production) {
     const target = integer(body.target_pieces, 'ยอดสั่งปั๊ม');
     const saved=(await one(db, `INSERT INTO pressing_orders(type_id,target_pieces,purpose,customer_reference)
@@ -115,8 +120,8 @@ export async function createOrder(db: Db, body: Body): Promise<number> {
   if (purpose === 'stock') {
     if (body.customer_pieces !== undefined || body.allowance_percent !== undefined) fail('งานสั่งเก็บสต็อกใช้ยอดเป้าหมาย ไม่ระบุยอดลูกค้าหรือยอดเผื่อ');
     const target=integer(body.target_pieces,'ยอดสั่งผลิตเก็บสต็อก');
-    const color=type.destination==='color' ? await one(db,'SELECT id,name FROM color_chart_entries WHERE id=$1',[integer(body.color_id,'สีเคลือบ')]) : null;
-    if(type.destination==='color'&&!color)fail('ไม่พบสีเคลือบที่เลือก');
+    const color=type.destination==='color' && (product || body.color_id !== undefined) ? await one(db,'SELECT id,name FROM color_chart_entries WHERE id=$1',[integer(body.color_id,'สีเคลือบ')]) : null;
+    if(type.destination==='color'&&(product || body.color_id !== undefined)&&!color)fail('ไม่พบสีเคลือบที่เลือก');
     const saved=(await one(db,`INSERT INTO pressing_orders(type_id,target_pieces,purpose,customer_reference,color_id,color_name,pieces_per_sqm,production_destination,production_clay)
       VALUES($1,$2,'stock',$3,$4,$5,$6,$7,$8) RETURNING id`,[typeId,target,reference,color?.id??null,color?.name??null,type.pieces_per_sqm,type.destination,type.clay])).id;
     return snapshotOrder(db,saved,product);

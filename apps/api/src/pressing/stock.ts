@@ -68,7 +68,7 @@ export async function recordEntry(db: Db, body: Body, actor: Recorder): Promise<
   }
 
   const type = await one(db, `SELECT t.id,t.active,coalesce(o.production_pieces_per_rack,t.pieces_per_rack) pieces_per_rack,coalesce(o.production_rest_days,t.rest_days) rest_days,
-    CASE WHEN o.customer_pieces IS NULL THEN t.pieces_per_sqm ELSE o.pieces_per_sqm END AS pieces_per_sqm,
+    coalesce(o.pieces_per_sqm,t.pieces_per_sqm) AS pieces_per_sqm,
     coalesce(o.production_destination,t.destination) AS destination,coalesce(o.production_clay,t.clay) AS clay
     FROM pressing_orders o JOIN pressing_types t ON t.id=o.type_id WHERE o.id=$1`, [orderId]);
   if (!type) fail('ไม่พบใบสั่งผลิตที่เลือก');

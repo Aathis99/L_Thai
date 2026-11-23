@@ -4,17 +4,18 @@ import { calendarDate, integer, pressingText } from '../pressing/catalog.js';
 import { finishingRequest, type Body, type Recorder } from './requests.js';
 
 export function listFinishingIssues(db: Db) {
-  return all(db, `SELECT *,least(net_pieces,finishing_confirmed_pieces)-glazed_pieces AS unglazed_pieces FROM finishing_issues
-    WHERE order_id IS NOT NULL ORDER BY id DESC`);
+  return all(db, `SELECT i.*,o.product_id,o.product_snapshot->>'product_code' product_code,o.product_snapshot->>'name' product_name,o.production_clay_color,
+    least(i.net_pieces,i.finishing_confirmed_pieces)-i.glazed_pieces AS unglazed_pieces FROM finishing_issues i JOIN pressing_orders o ON o.id=i.order_id
+    ORDER BY i.id DESC`);
 }
 
 export function listGlazing(db: Db) {
   return all(db, `SELECT b.*,to_char(b.worked_on,'YYYY-MM-DD') AS worked_on,
-    i.order_id,i.customer_reference,i.color_name,i.type_id,
+    i.order_id,i.customer_reference,i.color_name,i.type_id,o.product_id,o.product_snapshot->>'product_code' product_code,o.product_snapshot->>'name' product_name,o.production_clay_color,
     ARRAY(SELECT concat_ws(' ',nullif(e.prefix,''),nullif(e.first_name,''),nullif(e.last_name,''))
       FROM glazing_batch_workers w JOIN employees e ON e.id=w.employee_id
       WHERE w.batch_id=b.id ORDER BY e.id) AS workers
-    FROM glazing_batches b JOIN finishing_issues i ON i.id=b.issue_id ORDER BY b.id DESC`);
+    FROM glazing_batches b JOIN finishing_issues i ON i.id=b.issue_id JOIN pressing_orders o ON o.id=i.order_id ORDER BY b.id DESC`);
 }
 
 export function confirmFinishingIssue(db: Db, body: Body, actor: Recorder) {

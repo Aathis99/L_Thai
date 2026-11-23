@@ -19,10 +19,10 @@ export async function handleCatalogRoute(req:Request,res:Response,access:Session
  if(!match)return false;
  const [,kind,rawId]=match,id=rawId?Number(rawId):undefined;
  if(id&&!Number.isSafeInteger(id))fail('รหัสรายการไม่ถูกต้อง');
- if(!((req.method==='POST'&&!id)||(req.method==='PUT'&&id)))return false;
+ if(!((req.method==='POST'&&!id)||(req.method==='PUT'&&id)||(req.method==='DELETE'&&id&&kind==='profiles')))return false;
  const result=await access.mutate('pressing.manage',async(db,actor)=>{
   const save={products:saveProduct,bodies:saveBody,profiles:saveProfile}[kind as 'products'|'bodies'|'profiles'];
-  const saved=await save(db,req.body??{},id);await audit(db,actor.username,'ทะเบียนกระเบื้อง '+kind,String(saved));return saved;
+  const saved=await save(db,req.method==='DELETE'?{active:false}:req.body??{},id);await audit(db,actor.username,'ทะเบียนกระเบื้อง '+kind,String(saved));return saved;
  });
  res.status(id?200:201).json({id:result});return true;
 }

@@ -6,7 +6,8 @@ import { Field } from "../fields";
 import { Card, Check, Choice, Facts, FormDialog, Section, type PressingActions } from "./shared";
 
 type Editor = { kind: "product"; product?: CatalogProduct } | { kind: "body"; body?: CatalogBody } |
-  { kind: "link"; product: CatalogProduct } | { kind: "profile"; profile?: CatalogProfile; bodyId?: number };
+  { kind: "link"; product: CatalogProduct } | { kind: "profile"; profile?: CatalogProfile; bodyId?: number } |
+  { kind: "profile-status"; profile: CatalogProfile };
 type DialogProps = Pick<PressingActions, "api" | "onSaved"> & { onClose: () => void };
 
 export default function Catalog({ data, actions }: {
@@ -60,7 +61,10 @@ export default function Catalog({ data, actions }: {
           <h4>{profileLabel(profile)}{!profile.active && " · หยุดใช้"}</h4>
           <ProfileFacts profile={profile} />
           {manage && <div className="pressing-actions"><button className="button warning"
-            onClick={() => setEditor({ kind: "profile", profile, bodyId: body.id })}>แก้ไขค่าผลิต</button></div>}
+            onClick={() => setEditor({ kind: "profile", profile, bodyId: body.id })}>แก้ไขค่าผลิต</button>
+            <button className={`button ${profile.active ? "destructive" : "success"}`}
+              onClick={() => setEditor({ kind: "profile-status", profile })}>{profile.active ? "หยุดใช้ประเภทผลิต" : "เปิดใช้ประเภทผลิต"}</button>
+          </div>}
         </div>)}
       </Card>)}</div>
     </Section>
@@ -68,9 +72,13 @@ export default function Catalog({ data, actions }: {
       <p className="helper">รักษาเลขประเภทและประวัติเดิม ตรวจชิ้นงานจริงก่อนเชื่อมกับแบบดินปั๊ม</p>
       {!legacy.length && <p>ไม่มีประเภทผลิตเดิมที่รอจับคู่</p>}
       <div className="pressing-cards">{legacy.map(profile => <Card key={profile.id}
-        title={`${tileName(data.profiles, profile.id)} · #${profile.id}`} actions={manage &&
+        title={`${tileName(data.profiles, profile.id)} · #${profile.id}`}
+        meta={!profile.active && <span className="badge neutral">หยุดใช้แล้ว</span>} actions={manage && <>
           <button className="button warning" disabled={!data.bodies.length}
-            onClick={() => setEditor({ kind: "profile", profile })}>ตรวจยืนยันและเชื่อมแบบดินปั๊ม</button>}>
+            onClick={() => setEditor({ kind: "profile", profile })}>ตรวจยืนยันและเชื่อมแบบดินปั๊ม</button>
+          <button className={`button ${profile.active ? "destructive" : "success"}`}
+            onClick={() => setEditor({ kind: "profile-status", profile })}>{profile.active ? "หยุดใช้ประเภทผลิต" : "เปิดใช้ประเภทผลิต"}</button>
+        </>}>
         <ProfileFacts profile={profile} />
       </Card>)}</div>
     </Section>
@@ -87,6 +95,14 @@ export default function Catalog({ data, actions }: {
       <Check name="verified" label="ตรวจยืนยันรูปทรง ขนาด ความหนา และรายละเอียดขึ้นรูปแล้วว่าใช้แบบดินปั๊มนี้" required />
     </FormDialog>}
     {manage && editor?.kind === "profile" && <ProfileForm {...dialog} bodies={data.bodies} profile={editor.profile} bodyId={editor.bodyId} />}
+    {manage && editor?.kind === "profile-status" && <FormDialog {...dialog} scope="catalog"
+      title={editor.profile.active ? "หยุดใช้ประเภทผลิต" : "เปิดใช้ประเภทผลิต"} path={`/profiles/${editor.profile.id}`}
+      method={editor.profile.active ? "DELETE" : "PUT"} submitLabel={editor.profile.active ? "ยืนยันหยุดใช้" : "ยืนยันเปิดใช้"}
+      build={() => editor.profile.active ? {} : { active: true }}>
+      <p>{tileName(data.profiles, editor.profile.id)} · #{editor.profile.id}</p>
+      <ProfileFacts profile={editor.profile} />
+      <p className="helper">{editor.profile.active ? "หยุดใช้สำหรับเปิดงานใหม่ โดยรักษาประเภทผลิตและประวัติเดิมทั้งหมด" : "เปิดใช้สำหรับงานใหม่เมื่อข้อมูลผลิตครบ โดยรักษาเลขประเภทและประวัติเดิม"}</p>
+    </FormDialog>}
   </>;
 }
 

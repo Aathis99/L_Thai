@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { count, destinations, formInteger, formText, orderName, orderPurposes, tileName, type PressingData, type ProductionOrder, type TileType } from "../../lib/pressing";
-import { catalogOrderSelection, productLabel, productProfiles, profileLabel, sizeUnits, type CatalogState } from "../../lib/tile-catalog";
+import { catalogOrderSelection, productLabel, productProfiles, profileLabel, readyProductionProfiles, sizeUnits, type CatalogState } from "../../lib/tile-catalog";
 import { Field } from "../fields";
 import { Card, Choice, Facts, FormDialog, Section, type PressingActions } from "./shared";
 
@@ -16,6 +16,7 @@ export default function Orders({ data, actions }: { data: PressingData; actions:
   const prepare = actions.can("finishing.read") && actions.can("finishing.prepare");
   const activeTypes = data.types.filter((tile) => tile.active);
   const readyProducts = data.catalog?.products.filter(product => productProfiles(product, data.catalog!.profiles).length) ?? [];
+  const readyProfiles = readyProductionProfiles(activeTypes);
   const dialog = { api: actions.api, onSaved: actions.onSaved, onClose: () => setEditor(null) };
   const deleting = editor?.kind === "delete" && editor.order;
   const currentOrder = deleting && data.orders.find((order) => order.id === deleting.id);
@@ -23,11 +24,11 @@ export default function Orders({ data, actions }: { data: PressingData; actions:
   return (
     <>
       <Section title="ใบสั่งผลิต" action={manage && (
-        <button className="button primary" disabled={!readyProducts.length} onClick={() => setEditor({ kind: "order" })}>
+        <button className="button primary" disabled={!readyProducts.length && !readyProfiles.length} onClick={() => setEditor({ kind: "order" })}>
           เพิ่มใบสั่งผลิต
         </button>
       )}>
-        {manage && !readyProducts.length && <p>ตรวจยืนยันแบบดินปั๊มและค่าผลิตรายดินที่เมนูหมวดหมู่ → ทะเบียนกระเบื้องก่อนเปิดใบสั่งผลิต</p>}
+        {manage && !readyProducts.length && <p>{readyProfiles.length ? "สั่งปั๊มดินพื้นเก็บสต็อกได้จากประเภทผลิตที่พร้อม สำหรับออเดอร์สินค้าให้ยืนยันแบบดินปั๊มและค่าผลิตในทะเบียนก่อน" : "ตรวจยืนยันแบบดินปั๊มและค่าผลิตรายดินที่เมนูหมวดหมู่ → ทะเบียนกระเบื้องก่อนเปิดใบสั่งผลิต"}</p>}
         {data.orders.length ? (
           <div className="pressing-cards">
             {data.orders.map((order) => (
@@ -102,14 +103,18 @@ function OrderForm({ types, colors, legacy, catalog, ...dialog }: DialogProps & 
   const [typeId, setTypeId] = useState(legacy ? String(legacy.type_id) : "");
   const [productId, setProductId] = useState("");
   const [search, setSearch] = useState("");
-  const [purpose,setPurpose]=useState<'customer'|'stock'>(legacy?.purpose??'customer');
+  const [purpose,setPurpose]=useState<'customer'|'stock'>(legacy?.purpose ??
+    (catalog?.products.some(item => productProfiles(item, catalog.profiles).length) ? "customer" : "stock"));
+  const [stockKind, setStockKind] = useState("preform");
   const [customer, setCustomer] = useState(0);
   const [percent, setPercent] = useState(10);
   const product = catalog?.products.find(item => item.id === Number(productId));
-  const profiles = product ? productProfiles(product, catalog?.profiles ?? []) : [];
+  const allProfiles = catalog?.profiles ?? types.map(item => ({ ...item, body_id: item.body_id ?? null }));
+  const bareStock = !legacy && purpose === "stock" && stockKind === "preform";
+  const profiles = bareStock ? readyProductionProfiles(allProfiles) : product ? productProfiles(product, allProfiles) : [];
   const type = legacy ? types.find((tile) => tile.id === legacy.type_id) : profiles.find(item => item.id === Number(typeId));
-  const mesh = product?.mounting_type === "mesh";
-  const products = catalog?.products.filter(item => item.active && (String(item.id) === productId ||
+  const mesh = !bareStock && product?.mounting_type === "mesh";
+  const products = catalog?.products.filter(item => item.active && (purpose !== "stock" || item.mounting_type !== "mesh") && (String(item.id) === productId ||
     productLabel(item).toLocaleLowerCase("th").includes(search.trim().toLocaleLowerCase("th")))) ?? [];
   const allowance = Math.ceil(customer * percent / 100);
   return (
@@ -120,31 +125,40 @@ function OrderForm({ types, colors, legacy, catalog, ...dialog }: DialogProps & 
       submitDisabled={!legacy && (!type || (mesh && purpose !== "customer"))}
       build={(form) => ({
         ...(legacy ? { order_id: legacy.id } : {
-          ...catalogOrderSelection(catalog?.products ?? [], catalog?.profiles ?? [],
-            formInteger(form, "product_id", "รายการสินค้า"), formInteger(form, "type_id", "ประเภทดินและสีที่ผสม"), purpose), purpose,
+          ...catalogOrderSelection(catalog?.products ?? [], allProfiles,
+            bareStock ? null : formInteger(form, "product_id", "รายการสินค้า"), formInteger(form, "type_id", "ประเภทดินและสีที่ผสม"), purpose), purpose,
           customer_reference: formText(form, "customer_reference"),
         }),
         ...(purpose==='customer'?{customer_pieces:formInteger(form,'customer_pieces','ยอดลูกค้าสั่ง'),allowance_percent:formInteger(form,'allowance_percent','เปอร์เซ็นต์เผื่อ')}:{target_pieces:formInteger(form,'target_pieces','ยอดสั่งเก็บสต็อก')}),
-        color_id: type?.destination === "color" ? formInteger(form, "color_id", "สีเคลือบ") : null,
+        color_id: type?.destination === "color" && (!bareStock || formText(form, "color_id")) ? formInteger(form, "color_id", "สีเคลือบ") : null,
       })}
     >
       <div className="form-grid">
         {legacy ? <p>{orderName(legacy)} · {tileName(types, legacy.type_id)}</p> : <>
-          <Choice label="ที่มาของใบสั่งผลิต" name="purpose" value={purpose} onChange={v=>setPurpose(v as 'customer'|'stock')}
-            options={mesh ? [{value:'customer',label:'ตามออเดอร์ลูกค้า'}] : [{value:'customer',label:'ตามออเดอร์ลูกค้า'},{value:'stock',label:'ผลิตเก็บสต็อก'}]} />
+          <Choice label="ที่มาของใบสั่งผลิต" name="purpose" value={purpose} onChange={value => {
+            setPurpose(value as "customer" | "stock"); setTypeId("");
+            if (value === "stock") setStockKind("preform");
+          }} options={[{value:'customer',label:'ตามออเดอร์ลูกค้า'},{value:'stock',label:'ผลิตเก็บสต็อก'}]} />
+          {purpose === "stock" && <Choice label="งานที่สั่งเก็บสต็อก" name="stock_kind" value={stockKind} onChange={value => {
+            setStockKind(value); setTypeId(""); setProductId("");
+          }} options={[{ value: "preform", label: "ดินพื้นตามประเภทผลิต ไม่ระบุสินค้า" }, { value: "product", label: "สินค้ารุ่นไม่ติดตาข่าย" }]} />}
+          {!bareStock && <>
           <Field label="ค้นหารหัสหรือชื่อสินค้า" name="product_search" type="search" value={search} onChange={event => setSearch(event.target.value)} />
           <Choice label="รายการสินค้าและรุ่น" name="product_id" value={productId} onChange={value => {
             setProductId(value); setTypeId("");
             if (catalog?.products.find(item => item.id === Number(value))?.mounting_type === "mesh") setPurpose("customer");
           }} options={products.map(item => ({ value: item.id,
             label: `${productLabel(item)}${productProfiles(item, catalog?.profiles ?? []).length ? "" : " · รอตั้งค่าผลิต"}` }))} />
+          </>}
           <Choice label="ประเภทดิน / สีที่ผสม" name="type_id" value={typeId} onChange={setTypeId}
-            options={profiles.map(item => ({ value: item.id, label: profileLabel(item) }))} />
-          {product && !profiles.length && <p className="helper">สินค้านี้ยังไม่มีค่าผลิตครบ กรุณาตั้งค่าที่ทะเบียนกระเบื้องก่อนเปิดใบสั่ง</p>}
-          {product && <p className="helper">{mesh ? "รุ่นติดตาข่าย ต้องมีออเดอร์ลูกค้า นับกระเบื้องย่อยเป็นแผ่น และพร้อมส่งหลังยืนยันติดตาข่ายเสร็จ" : "รุ่นนี้ไม่ระบุตาข่าย"}</p>}
+            options={profiles.map(item => ({ value: item.id, label: bareStock ? `${tileName(profiles, item.id)} · #${item.id}${item.body_id === null ? " · ประเภทเดิมยังไม่จับคู่" : ""}` : profileLabel(item) }))} />
+          {bareStock && <p className="helper">สั่งปั๊มดินพื้นเก็บตามประเภทผลิตและสีที่ผสม ใช้ประเภทเดิมที่ยังไม่จับคู่สินค้าได้ เมื่อนำไปทำสีหรือลาย ให้กันและเบิกดินไปยังใบสั่งสินค้าปลายทางที่ระบุงานจริงก่อน ใบเก็บดินพื้นนี้ไม่เป็นงานติดตาข่าย</p>}
+          {!bareStock && product && !profiles.length && <p className="helper">สินค้านี้ยังไม่มีค่าผลิตครบ กรุณาตั้งค่าที่ทะเบียนกระเบื้องก่อนเปิดใบสั่ง</p>}
+          {!bareStock && product && <p className="helper">{mesh ? "รุ่นติดตาข่าย ต้องมีออเดอร์ลูกค้า นับกระเบื้องย่อยเป็นแผ่น และพร้อมส่งหลังยืนยันติดตาข่ายเสร็จ" : "รุ่นนี้ไม่ระบุตาข่าย"}</p>}
           <Field label={purpose==='customer'?'เลขอ้างอิงออเดอร์':'เลขอ้างอิงงานสั่งเก็บสต็อก'} name="customer_reference" required={purpose==='customer'} />
         </>}
         {type?.destination === "color" && <Choice label="สีเคลือบ" name="color_id"
+          empty={bareStock ? "ยังไม่ระบุสีเคลือบ" : undefined}
           options={colors.map(color => ({ value: color.id, label: color.name }))} />}
         <Field label={purpose==='customer'?'ยอดลูกค้าสั่ง (แผ่น)':'ยอดสั่งเก็บสต็อก (แผ่น)'} name={purpose==='customer'?'customer_pieces':'target_pieces'} type="number" min={1} step={1}
           onChange={event => setCustomer(Number(event.target.value))} required />

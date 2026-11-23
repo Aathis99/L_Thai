@@ -23,6 +23,8 @@ test('partial mesh completion is idempotent, source-bound and reversible without
  const saved=await f.call('/finishing/mesh','POST',request);assert.equal(saved.status,201);
  assert.equal((await f.call('/finishing/mesh','POST',request)).body.id,saved.body.id);
  mesh=await f.call('/finishing/mesh');item=mesh.body.orders.find((o:any)=>o.id===orderId);
+ const history=mesh.body.entries.find((e:any)=>e.id===saved.body.id).lines[0];
+ assert.equal(history.source,'workflow');assert.equal(history.allocation_id,101);assert.equal(history.qc_id,50);assert.equal(history.grade,'A+');assert.equal(history.pieces,400);
  assert.equal(item.completed_pieces,400);assert.equal(item.waiting_pieces,600);assert.equal(item.ready_pieces,400);
  const shipping=(await f.call('/finishing/orders')).body.items.find((o:any)=>o.id===orderId);
  assert.equal(shipping.ready_pieces,400);assert.equal(shipping.allocated_pieces,1000);assert.equal(shipping.waiting_mesh_pieces,600);

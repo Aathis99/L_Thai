@@ -21,12 +21,13 @@ export async function catalogState(db:Db){return {
 export async function saveBody(db:Db,body:Body,id?:number){
  const values=[pressingText(body.name,'ชื่อแบบดินปั๊ม',true),...dimensions(body)];
  if(id){
-  const used=await one(db,`SELECT 1 FROM pressing_types t JOIN pressing_orders o ON o.type_id=t.id WHERE t.body_id=$1 LIMIT 1`,[id]);
+  const used=await one(db,`SELECT 1 FROM pressing_types t WHERE t.body_id=$1 AND (EXISTS(SELECT 1 FROM pressing_orders WHERE type_id=t.id) OR EXISTS(SELECT 1 FROM pressing_stock_sources WHERE type_id=t.id) OR EXISTS(SELECT 1 FROM pressing_sort_results WHERE type_id=t.id)) LIMIT 1`,[id]);
   const current=await one(db,'SELECT * FROM tile_bodies WHERE id=$1',[id]);
   if(!current)fail('ไม่พบแบบดินปั๊ม',404);
   if(used&&['shape','size_1','size_2','size_unit','thickness_mm'].some((key,i)=>current[key]!==values[i+1]))fail('แบบดินปั๊มมีงานอ้างอิงแล้ว กรุณาสร้างแบบใหม่เมื่อลักษณะเปลี่ยน',409);
  }
  const row=id?await one(db,'UPDATE tile_bodies SET name=$1,shape=$2,size_1=$3,size_2=$4,size_unit=$5,thickness_mm=$6 WHERE id=$7 RETURNING id',[...values,id]):await one(db,'INSERT INTO tile_bodies(name,shape,size_1,size_2,size_unit,thickness_mm) VALUES($1,$2,$3,$4,$5,$6) RETURNING id',values);
+ if(id)await db.query('UPDATE pressing_types SET width=$1,length=$2 WHERE body_id=$3',[values[2],values[3],id]);
  return row.id as number;
 }
 export async function saveProduct(db:Db,body:Body,id?:number){
@@ -40,6 +41,10 @@ export async function saveProduct(db:Db,body:Body,id?:number){
  if(!row)fail('ไม่พบสินค้า',404);return row.id as number;
 }
 export async function saveProfile(db:Db,body:Body,id?:number){
+ if(id && Object.keys(body).length===1 && typeof body.active==='boolean'){
+  if(!await one(db,'UPDATE pressing_types SET active=$1 WHERE id=$2 RETURNING id',[body.active,id]))fail('ไม่พบประเภทผลิต',404);
+  return id;
+ }
  const bodyId=integer(body.body_id,'แบบดินปั๊ม');
  const tileBody=await one(db,'SELECT * FROM tile_bodies WHERE id=$1',[bodyId]);if(!tileBody)fail('ไม่พบแบบดินปั๊ม');
  if(!clays.includes(body.clay as any))fail('กรุณาเลือกประเภทดิน');
@@ -49,7 +54,7 @@ export async function saveProfile(db:Db,body:Body,id?:number){
   integer(body.pieces_per_rack,'จำนวนแผ่นต่อไม้'),integer(body.rest_days,'จำนวนวันพัก',0),body.destination,positive(body.pieces_per_sqm,'แผ่นต่อ ตร.ม.'),bodyId];
  if(id){
   const current=await one(db,'SELECT * FROM pressing_types WHERE id=$1',[id]);if(!current)fail('ไม่พบประเภทผลิต',404);
-  const used=await one(db,`SELECT EXISTS(SELECT 1 FROM pressing_orders WHERE type_id=$1) OR EXISTS(SELECT 1 FROM pressing_stock_sources WHERE type_id=$1) AS used`,[id]);
+  const used=await one(db,`SELECT EXISTS(SELECT 1 FROM pressing_orders WHERE type_id=$1) OR EXISTS(SELECT 1 FROM pressing_stock_sources WHERE type_id=$1) OR EXISTS(SELECT 1 FROM pressing_sort_results WHERE type_id=$1) AS used`,[id]);
   // Explicitly linking a legacy identity is allowed; reassigning an already-linked, used identity is not.
   if(used.used&&(current.clay!==body.clay||(current.body_id!==null&&current.body_id!==bodyId)||(body.clay==='สี'&&current.clay_color!==clayColor)))fail('ประเภทผลิตมีประวัติอ้างอิงแล้ว เปลี่ยนดินหรือแบบไม่ได้',409);
   if(used.used&&current.body_id===null&&(current.width!==tileBody.size_1||current.length!==tileBody.size_2||tileBody.size_unit!=='in'))fail('ขนาดประเภทเดิมกับแบบดินปั๊มไม่ตรงกัน กรุณาตรวจหน้างานก่อนจับคู่',409);
@@ -76,7 +81,8 @@ export async function validateProductOrder(db:Db,body:Body,typeId:number){
 }
 export async function snapshotOrder(db:Db,orderId:number,product:any){
  await db.query(`UPDATE pressing_orders o SET product_id=$2,product_snapshot=$3,requires_mesh=$4,
-  production_pieces_per_rack=t.pieces_per_rack,production_rest_days=t.rest_days,production_clay_color=t.clay_color
+  production_pieces_per_rack=t.pieces_per_rack,production_rest_days=t.rest_days,production_clay_color=t.clay_color,
+  pieces_per_sqm=t.pieces_per_sqm,production_destination=t.destination,production_clay=t.clay
   FROM pressing_types t WHERE o.id=$1 AND t.id=o.type_id`,[orderId,product?.id??null,product?JSON.stringify(product):null,product?.mounting_type==='mesh']);
  return orderId;
 }

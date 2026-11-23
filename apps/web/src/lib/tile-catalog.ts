@@ -39,14 +39,21 @@ export function profileLabel(item: TileType): string {
 
 export function productProfiles(product: CatalogProduct, profiles: readonly CatalogProfile[]): CatalogProfile[] {
   if (!product.active || product.body_id === null) return [];
-  return profiles.filter(profile => profile.body_id === product.body_id && profile.active &&
+  return readyProductionProfiles(profiles).filter(profile => profile.body_id === product.body_id);
+}
+
+export function readyProductionProfiles<T extends TileType>(profiles: readonly T[]): T[] {
+  return profiles.filter(profile => profile.active &&
     profile.pieces_per_rack > 0 && profile.rest_days >= 0 && (profile.pieces_per_sqm ?? 0) > 0 &&
     (profile.destination === "color" || profile.destination === "kiln") &&
     (profile.clay !== "สี" || Boolean(profile.clay_color?.trim())));
 }
 
 export function catalogOrderSelection(products: readonly CatalogProduct[], profiles: readonly CatalogProfile[],
-  productId: number, profileId: number, purpose: string) {
+  productId: number | null, profileId: number, purpose: string) {
+  if (productId === null && purpose === "stock" && readyProductionProfiles(profiles).some(profile => profile.id === profileId)) {
+    return { type_id: profileId };
+  }
   const product = products.find(item => item.id === productId);
   if (!product || !productProfiles(product, profiles).some(item => item.id === profileId)) {
     throw new Error("กรุณาเลือกสินค้าที่ตรวจยืนยันแบบดินปั๊มและข้อมูลผลิตครบแล้ว");
@@ -81,6 +88,7 @@ export interface MeshEntry {
   id: number;
   order_id: number;
   pieces: number;
+  lines: (Pick<MeshSource, "key" | "source" | "allocation_id" | "qc_id" | "grade"> & { pieces: number })[];
   recorded_at: string;
   recorded_by_username?: string;
   voided_at: string | null;

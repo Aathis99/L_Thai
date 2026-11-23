@@ -6,14 +6,18 @@ import { finishingRequest, type Body, type Recorder } from './requests.js';
 
 export function listQc(db: Db) {
   return all(db, `SELECT q.*,to_char(q.sorted_on,'YYYY-MM-DD') AS sorted_on,
-    t.type_id,t.clay,t.color_name,t.orders,t.loads,
+    t.type_id,t.clay,t.color_name,t.orders,t.loads,t.product_id,t.product_code,t.product_name,t.production_clay_color,
     coalesce((SELECT jsonb_agg(to_jsonb(a) ORDER BY a.id) FROM firing_qc_allocations a WHERE a.qc_id=q.id),'[]') AS allocations,
     CASE WHEN q.orders_filled AND q.voided_at IS NULL THEN q.unallocated_pieces ELSE 0 END AS stock_available
     FROM firing_qc_balances q CROSS JOIN LATERAL (
       SELECT min(l.type_id) AS type_id,min(l.clay) AS clay,min(l.color_name) AS color_name,
         array_agg(DISTINCT l.order_id ORDER BY l.order_id) AS orders,
-        jsonb_agg(jsonb_build_object('id',l.id,'order_id',l.order_id,'pieces',x.pieces) ORDER BY l.id) AS loads
-      FROM firing_qc_loads x JOIN firing_loads l ON l.id=x.load_id WHERE x.qc_id=q.id
+        CASE WHEN count(DISTINCT o.product_id)=1 AND count(o.product_id)=count(*) THEN min(o.product_id) END product_id,
+        CASE WHEN count(DISTINCT o.product_id)=1 AND count(o.product_id)=count(*) THEN min(o.product_snapshot->>'product_code') END product_code,
+        CASE WHEN count(DISTINCT o.product_id)=1 AND count(o.product_id)=count(*) THEN min(o.product_snapshot->>'name') END product_name,
+        CASE WHEN count(DISTINCT o.product_id)=1 AND count(o.product_id)=count(*) THEN min(o.production_clay_color) END production_clay_color,
+        jsonb_agg(jsonb_build_object('id',l.id,'order_id',l.order_id,'pieces',x.pieces,'product_id',o.product_id,'product_code',o.product_snapshot->>'product_code','product_name',o.product_snapshot->>'name','production_clay_color',o.production_clay_color) ORDER BY l.id) AS loads
+      FROM firing_qc_loads x JOIN firing_loads l ON l.id=x.load_id LEFT JOIN pressing_orders o ON o.id=l.order_id WHERE x.qc_id=q.id
     ) t ORDER BY q.id DESC`);
 }
 

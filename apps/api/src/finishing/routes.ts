@@ -30,7 +30,7 @@ const reads = {
     CASE WHEN o.requires_mesh THEN b.ready_pieces-coalesce(m.pieces,0) ELSE 0 END waiting_mesh_pieces,b.missing_pieces
     FROM finishing_order_balances b JOIN pressing_orders o ON o.id=b.id
     LEFT JOIN (SELECT order_id,sum(pieces)::double precision pieces FROM tile_mesh_entries WHERE voided_at IS NULL GROUP BY order_id) m ON m.order_id=o.id ORDER BY o.id DESC`),
-  types: (db: PressingAccess['db']) => all(db, 'SELECT id,width,length,clay,name FROM pressing_types ORDER BY id'),
+  types: (db: PressingAccess['db']) => all(db, 'SELECT id,width,length,clay,name,clay_color FROM pressing_types ORDER BY id'),
 };
 
 const writes = {

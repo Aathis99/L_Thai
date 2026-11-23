@@ -60,6 +60,7 @@ export default function MeshPanel({ api, user, refreshToken, onChanged }: {
         actions={canReverse && !entry.voided_at && <button className="button warning"
           onClick={() => setEditor({ kind: "void", entry })}>ย้อนรายการติดตาข่าย</button>}>
         <p>{entry.recorded_by_username && `${entry.recorded_by_username} · `}{timestamp(entry.recorded_at)}</p>
+        <EntrySources entry={entry} />
         {entry.voided_at && <p>ย้อนเมื่อ {timestamp(entry.voided_at)}{entry.reason && ` · ${entry.reason}`}</p>}
       </Card>)}</div>
     </Section>
@@ -77,7 +78,18 @@ export default function MeshPanel({ api, user, refreshToken, onChanged }: {
       title="ย้อนรายการติดตาข่าย" intent="warning" submitLabel="ยืนยันย้อนรายการ" onClose={() => setEditor(undefined)} onStale={reload}
       onSaved={async () => { setStatus("ย้อนรายการติดตาข่ายแล้ว"); await reload(); }} build={form => ({ reason: formText(form, "reason") })}>
       <p>รายการติดตาข่าย #{editor.entry.id} · ใบสั่ง #{editor.entry.order_id} · {count(editor.entry.pieces)} แผ่น</p>
+      <EntrySources entry={editor.entry} />
       <Field name="reason" label="เหตุผลที่ย้อนรายการ" required />
     </FormDialog>}
   </>;
+}
+
+function EntrySources({ entry }: { entry: MeshEntry }) {
+  return <div>
+    <h4>ต้นทางและเกรดที่ใช้ในรายการนี้</h4>
+    <ul>{entry.lines.map(line => <li key={line.key}>
+      {line.source === "workflow" ? "งานเตาปัจจุบัน" : "งานเดิม"} · ผล QC #{line.qc_id} · จัดสรร #{line.allocation_id}
+      {` · เกรด ${line.grade ?? "ข้อมูลเดิม"} · ${count(line.pieces)} แผ่น`}
+    </li>)}</ul>
+  </div>;
 }

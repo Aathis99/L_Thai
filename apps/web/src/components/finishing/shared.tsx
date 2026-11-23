@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
-import { finishingTileName, type FinishingTile } from "../../lib/finishing";
+import { finishingTileName, type FinishingProduct, type FinishingTile } from "../../lib/finishing";
 import { bangkokDate, formInteger, formText } from "../../lib/pressing";
 import type { Api, SessionUser } from "../../lib/types";
 import type { PressingWorker } from "../../lib/pressing";
@@ -10,9 +10,9 @@ type Order = { id: number; customer_reference: string; type_id: number; clay: st
   product_id?: number | null; product_code?: string | null; product_name?: string | null;
   requires_mesh?: boolean; allocated_pieces?: number; waiting_mesh_pieces?: number;
   customer_pieces: number; ready_pieces: number; missing_pieces: number };
-export type Issue = { id: number; type_id: number; clay: string; order_id: number; customer_reference: string; destination: "color" | "kiln";
+export type Issue = FinishingProduct & { id: number; type_id: number; clay: string; order_id: number; customer_reference: string; destination: "color" | "kiln";
   color_name: string | null; finishing_ready: boolean; customer_pieces: number | null; net_pieces: number; unglazed_pieces: number };
-type Batch = { id: number; issue_id: number; worked_on: string; pieces: number; pressing_waste: number; glazing_waste: number;
+type Batch = FinishingProduct & { id: number; issue_id: number; worked_on: string; pieces: number; pressing_waste: number; glazing_waste: number;
   good_pieces: number; pieces_per_sqm: number | null; workers: string[]; customer_reference: string; color_name: string };
 export type Source = { issue_id: number; batch_id: number | null; type_id: number; clay: string; customer_reference: string; color_name: string | null;
   clay_min: number | null; clay_max: number | null; color_min: number | null; color_max: number | null; ready_on: string;

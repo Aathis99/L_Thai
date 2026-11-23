@@ -44,7 +44,10 @@ export async function meshState(db:Db){
   const lines=sources.filter(s=>s.order_id===order.id).map(({signature,...source})=>({...source,grade:source.grade??'เดิม',available_pieces:source.pieces-(used.get(source.key)??0)}));
   const allocated=lines.reduce((n,l)=>n+Number(l.pieces),0),completed=entries.filter(e=>e.order_id===order.id&&!e.voided_at).reduce((n,e)=>n+e.pieces,0);
   return {...order,allocated_pieces:allocated,completed_pieces:completed,waiting_pieces:allocated-completed,ready_pieces:completed,lines};
- }),entries};
+ }),entries:entries.map(entry=>({...entry,lines:(entry.lines as MeshLine[]).map(line=>{
+  const signature=JSON.parse(line.signature);
+  return {...line,source:signature[0],allocation_id:signature[1],qc_id:signature[2],grade:signature[8]??'เดิม'};
+ })}))};
 }
 
 export async function recordMesh(db:Db,body:Body,actor:Actor){

@@ -1,4 +1,5 @@
 import { formatEmployeeName } from "../../lib/employee-names";
+import { finishingProductName, finishingTileName } from "../../lib/finishing";
 import { count, formText } from "../../lib/pressing";
 import type { Api, SessionUser } from "../../lib/types";
 import { Field } from "../fields";
@@ -9,7 +10,7 @@ const resources = ["issues", "glazing", "workers"] as const;
 
 export default function GlazingPage({ api, user }: { api: Api; user: SessionUser }) {
   return <FinishingPage api={api} user={user} resources={resources}>
-    {(data, { can, open, tileName, orderName }) => {
+    {(data, { can, open, orderName }) => {
       const issues = data.issues.filter(issue => issue.destination === "color" && issue.net_pieces > 0);
       return <>
         <Section title="ใบเบิกสำหรับงานชุบ">
@@ -27,6 +28,7 @@ export default function GlazingPage({ api, user }: { api: Api; user: SessionUser
                     worker_ids: form.getAll("workers").map(Number),
                   }), <>
                     <p>{orderName(issue.order_id)} · {issue.color_name} · เหลือ {count(issue.unglazed_pieces)} แผ่น</p>
+                    <p>{finishingTileName(data.types, issue.type_id, issue.clay, issue)}</p>
                     <DateField name="worked_on" label="วันที่ชุบ" />
                     <fieldset><legend>ผู้ทำงาน</legend>
                       {data.workers.map(worker => <Check key={worker.id} name="workers" value={worker.id} label={`${worker.code} · ${formatEmployeeName(worker)}`} />)}
@@ -41,7 +43,7 @@ export default function GlazingPage({ api, user }: { api: Api; user: SessionUser
                       form => ({ issue_id: issue.id, pieces: number(form, "pieces", "ยอดค้างที่ตรวจแล้ว") }),
                       <NumberField name="pieces" label="ยอดค้างที่ตรวจแล้ว (แผ่น)" max={issue.net_pieces} />, "success"), "success") : undefined
               }>
-              <p>{tileName(issue.type_id, issue.clay)} · {issue.color_name ?? "รอระบุสีเคลือบ"}</p>
+              <p>{finishingTileName(data.types, issue.type_id, issue.clay, issue)} · {issue.color_name ?? "รอระบุสีเคลือบ"}</p>
               <Facts values={{ "ยอดเบิกสุทธิ": count(issue.net_pieces),
                 ...(issue.finishing_ready ? { "ยอดที่ยังบันทึกชุบได้": count(issue.unglazed_pieces) } : {}) }} />
               {!issue.finishing_ready && <p>{issue.customer_pieces ? "รอตรวจยืนยันใบเบิกค้าง" : "รอเติมข้อมูลใบสั่งผลิต"}</p>}
@@ -58,6 +60,7 @@ export default function GlazingPage({ api, user }: { api: Api; user: SessionUser
               glazing_waste: number(form, "glazing_waste", "ชุบเสีย", 0),
               good_pieces: number(form, "good_pieces", "ดีพร้อมเผา", 0), reason: formText(form, "reason"),
             }), <>
+              {finishingProductName(batch) && <p>{finishingProductName(batch)}</p>}
               <NumberField name="pieces" label="จำนวนแผ่นในชุด" min={0} defaultValue={batch.pieces} />
               <NumberField name="pressing_waste" label="ปั๊มเสีย" min={0} defaultValue={batch.pressing_waste} />
               <NumberField name="glazing_waste" label="ชุบเสีย" min={0} defaultValue={batch.glazing_waste} />
@@ -65,6 +68,7 @@ export default function GlazingPage({ api, user }: { api: Api; user: SessionUser
               <Field name="reason" label="เหตุผลที่แก้ยอด" required />
             </>, "warning"), "warning")}>
             <p>{batch.worked_on} · ใบเบิก #{batch.issue_id} · {batch.workers.join(", ")}</p>
+            {finishingProductName(batch) && <p>{finishingProductName(batch)}</p>}
             <Facts values={{ "จำนวนแผ่นในชุด": count(batch.pieces), "ปั๊มเสีย": count(batch.pressing_waste),
               "ชุบเสีย": count(batch.glazing_waste), "ดีพร้อมเผา": count(batch.good_pieces),
               ...(batch.pieces_per_sqm ? { "พื้นที่ชุดชุบ (ตร.ม.)": count(batch.pieces / batch.pieces_per_sqm) } : {}) }} />

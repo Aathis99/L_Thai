@@ -40,8 +40,9 @@ export async function migrateTileCatalog(db:Db){
    id serial PRIMARY KEY,order_id integer NOT NULL REFERENCES pressing_orders(id),pieces integer NOT NULL CHECK(pieces>0),
    lines jsonb NOT NULL,recorded_by integer NOT NULL REFERENCES users(id),recorded_at timestamptz NOT NULL DEFAULT now(),
    voided_at timestamptz,voided_by integer REFERENCES users(id),reason text);
-  UPDATE pressing_orders o SET production_pieces_per_rack=t.pieces_per_rack,production_rest_days=t.rest_days,
-    production_clay_color=t.clay_color FROM pressing_types t
-    WHERE t.id=o.type_id AND o.production_pieces_per_rack IS NULL;
+  UPDATE pressing_orders o SET production_pieces_per_rack=coalesce(o.production_pieces_per_rack,t.pieces_per_rack),
+    production_rest_days=coalesce(o.production_rest_days,t.rest_days),production_clay_color=coalesce(o.production_clay_color,t.clay_color),
+    pieces_per_sqm=coalesce(o.pieces_per_sqm,t.pieces_per_sqm),production_destination=coalesce(o.production_destination,t.destination),
+    production_clay=coalesce(o.production_clay,t.clay) FROM pressing_types t WHERE t.id=o.type_id;
  `);
 }

@@ -152,9 +152,9 @@ test('pressing catalog, orders and worker selection use session permissions', as
     assert.deepEqual(historical, {
       ...order, id: created.body.id, target_pieces: 1200,
       customer_pieces: null, allowance_percent: null, allowance_pieces: null, color_id: null, color_name: null,
-      pieces_per_sqm: null, target_square_meters: null, production_clay: null,
+      pieces_per_sqm: 50, target_square_meters: 24, production_clay: 'ขาว',
       product_id:null,product_snapshot:null,requires_mesh:false,production_clay_color:null,
-      production_pieces_per_rack:750,production_rest_days:4,production_destination:null,product_name:null,product_code:null,
+      production_pieces_per_rack:750,production_rest_days:4,production_destination:'color',product_name:null,product_code:null,
       pressed_pieces: 0, short_pieces: 1200, over_pieces: 0, has_entries: false, has_issues: false,
     });
     const types = await press('/types');
@@ -473,7 +473,9 @@ test('pressing catalog, orders and worker selection use session permissions', as
     assert.equal((await press('/issues', 'POST', issueInput(typeId, [issueLine(resting.id, 200)]))).status, 409);
     const color = await receive(orderId);
     assert.equal((await press('/types/' + typeId, 'PUT', { ...tile, destination: 'kiln' })).status, 200);
-    const kiln = await receive(orderId);
+    const kilnOrder = await press('/orders', 'POST', {type_id:typeId,purpose:'stock',target_pieces:1500});
+    assert.equal(kilnOrder.status,201);
+    const kiln = await receive(kilnOrder.body.id);
     const input = issueInput(typeId, [issueLine(color.id, 200)]);
     const wrongType = await makeOrder('customer', 1000);
     for (const invalid of [
