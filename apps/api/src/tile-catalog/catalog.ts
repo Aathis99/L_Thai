@@ -1,6 +1,8 @@
 import {fail,text} from '../auth.js';
 import {all,one,type Db} from '../database.js';
 import {integer,pressingText} from '../pressing/catalog.js';
+import {clayRegistryState} from '../clay-registry/catalog.js';
+import {resolveClayIdentity} from '../clay-registry/identity.js';
 
 type Body=Record<string,unknown>;
 export const clays=['แดง','ขาว','ศิลาแลง','สี'] as const;
@@ -15,8 +17,10 @@ function dimensions(body:Body){
  return [pressingText(body.shape,'รูปทรง',false),positive(body.size_1,'ขนาดมิติแรก',true),positive(body.size_2,'ขนาดมิติที่สอง',true),unit,positive(body.thickness_mm,'ความหนา',true)];
 }
 export async function catalogState(db:Db){return {
+ ...await clayRegistryState(db),
  products:await all(db,'SELECT * FROM tile_products ORDER BY id'),bodies:await all(db,'SELECT * FROM tile_bodies ORDER BY id'),
- profiles:await all(db,'SELECT * FROM pressing_types ORDER BY id'),
+ profiles:await all(db,`SELECT t.*,c.name clay_name,c.active clay_active,p.active clay_color_active
+  FROM pressing_types t LEFT JOIN clay_types c ON c.id=t.clay_type_id LEFT JOIN clay_colors p ON p.id=t.clay_color_id ORDER BY t.id`),
 };}
 export async function saveBody(db:Db,body:Body,id?:number){
  const values=[pressingText(body.name,'ชื่อแบบดินปั๊ม',true),...dimensions(body)];
@@ -31,12 +35,12 @@ export async function saveBody(db:Db,body:Body,id?:number){
  return row.id as number;
 }
 export async function saveProduct(db:Db,body:Body,id?:number){
+ const previous=id?await one(db,'SELECT description_raw,notes,body_id FROM tile_products WHERE id=$1',[id]):null;
  const mounting=body.mounting_type??null;
  if(mounting!==null&&mounting!=='mesh')fail('รูปแบบการติดตาข่ายไม่ถูกต้อง');
- const bodyId=body.body_id==null?null:integer(body.body_id,'แบบดินปั๊ม');
+ const bodyId=body.body_id===undefined?previous?.body_id??null:body.body_id===null?null:integer(body.body_id,'แบบดินปั๊ม');
  if(bodyId&&!await one(db,'SELECT id FROM tile_bodies WHERE id=$1',[bodyId]))fail('ไม่พบแบบดินปั๊ม');
  if(body.active!==undefined&&typeof body.active!=='boolean')fail('สถานะสินค้าไม่ถูกต้อง');
- const previous=id?await one(db,'SELECT description_raw,notes FROM tile_products WHERE id=$1',[id]):null;
  const description=body.description_raw===undefined?(previous?.description_raw??''):(pressingText(body.description_raw,'คำบรรยายต้นฉบับ',false)??'');
  const notes=body.notes===undefined?(previous?.notes??null):pressingText(body.notes,'หมายเหตุ',false);
  const values=[pressingText(body.product_code,'รหัสสินค้า',true),pressingText(body.name,'ชื่อสินค้า',true),...dimensions(body),mounting,bodyId,body.active??true,description,notes];
@@ -50,6 +54,11 @@ export async function saveProfile(db:Db,body:Body,id?:number){
  }
  const bodyId=integer(body.body_id,'แบบดินปั๊ม');
  const tileBody=await one(db,'SELECT * FROM tile_bodies WHERE id=$1',[bodyId]);if(!tileBody)fail('ไม่พบแบบดินปั๊ม');
+ const clayTypeId=body.clay_type_id==null?(await one(db,"SELECT id FROM clay_types WHERE code=CASE $1::text WHEN 'ขาว' THEN 'WHITE' WHEN 'สี' THEN 'COLORED' WHEN 'แดง' THEN 'RED' WHEN 'ศิลาแลง' THEN 'LATERITE' END",[body.clay]))?.id:integer(body.clay_type_id,'ประเภทดิน');
+ if(!clayTypeId)fail('กรุณาเลือกประเภทดิน');
+ const identity=await resolveClayIdentity(db,clayTypeId,body.clay_color_id==null?null:integer(body.clay_color_id,'สีดิน'),true);
+ if(!id&&identity.clay_code==='COLORED'&&await one(db,"SELECT id FROM pressing_types WHERE body_id=$1 AND clay='สี' AND clay_color_id IS NULL LIMIT 1",[bodyId]))fail('แบบนี้มีค่าผลิตดินสีเดิมที่ยังไม่จับคู่ กรุณาตรวจยืนยันก่อนสร้างรายการใหม่',409);
+ body={...body,clay:identity.legacy_clay,clay_color:identity.clay_color_name};
  if(!clays.includes(body.clay as any))fail('กรุณาเลือกประเภทดิน');
  const clayColor=body.clay==='สี'?pressingText(body.clay_color,'สีที่ผสมในดิน',true):null;
  if(body.destination!=='color'&&body.destination!=='kiln')fail('กรุณาเลือกปลายทางเบิก');
@@ -59,16 +68,26 @@ export async function saveProfile(db:Db,body:Body,id?:number){
   const current=await one(db,'SELECT * FROM pressing_types WHERE id=$1',[id]);if(!current)fail('ไม่พบประเภทผลิต',404);
   const used=await one(db,`SELECT EXISTS(SELECT 1 FROM pressing_orders WHERE type_id=$1) OR EXISTS(SELECT 1 FROM pressing_stock_sources WHERE type_id=$1) OR EXISTS(SELECT 1 FROM pressing_sort_results WHERE type_id=$1) AS used`,[id]);
   // Explicitly linking a legacy identity is allowed; reassigning an already-linked, used identity is not.
-  if(used.used&&(current.clay!==body.clay||(current.body_id!==null&&current.body_id!==bodyId)||(body.clay==='สี'&&current.clay_color!==clayColor)))fail('ประเภทผลิตมีประวัติอ้างอิงแล้ว เปลี่ยนดินหรือแบบไม่ได้',409);
+  if(used.used&&((current.clay_type_id!=null&&current.clay_type_id!==identity.clay_type_id)||(current.clay_color_id!=null&&current.clay_color_id!==identity.clay_color_id)))fail('ประเภทผลิตมีประวัติแล้ว เปลี่ยนประเภทดินหรือสีดินไม่ได้',409);
+  if(used.used&&(current.clay!==body.clay||(current.body_id!==null&&current.body_id!==bodyId)||(body.clay==='สี'&&current.clay_color_id==null&&current.clay_color!==clayColor)))fail('ประเภทผลิตมีประวัติอ้างอิงแล้ว เปลี่ยนดินหรือแบบไม่ได้',409);
   if(used.used&&current.body_id===null&&(current.width!==tileBody.size_1||current.length!==tileBody.size_2||tileBody.size_unit!=='in'))fail('ขนาดประเภทเดิมกับแบบดินปั๊มไม่ตรงกัน กรุณาตรวจหน้างานก่อนจับคู่',409);
-  if(used.used){values[3]=current.name;if(body.clay!=='สี')values[4]=current.clay_color;}
+  if(used.used){values[3]=current.name;values[4]=current.clay_color;}
  }
- if(await one(db,`SELECT id FROM pressing_types WHERE body_id=$1 AND clay=$2 AND (clay<>'สี' OR lower(coalesce(clay_color,''))=lower(coalesce($3,''))) AND ($4::integer IS NULL OR id<>$4)`,[bodyId,body.clay,clayColor,id??null]))fail('มีค่าผลิตของดินและสีดินนี้แล้ว',409);
+ if(await one(db,`SELECT id FROM pressing_types WHERE body_id=$1 AND clay_type_id=$2 AND clay_color_id IS NOT DISTINCT FROM $3::integer AND ($4::integer IS NULL OR id<>$4)`,[bodyId,identity.clay_type_id,identity.clay_color_id,id??null]))fail('มีค่าผลิตของดินและสีดินนี้แล้ว',409);
  const row=id?await one(db,`UPDATE pressing_types SET width=$1,length=$2,clay=$3,name=$4,clay_color=$5,pieces_per_rack=$6,rest_days=$7,destination=$8,pieces_per_sqm=$9,body_id=$10 WHERE id=$11 RETURNING id`,[...values,id]):await one(db,`INSERT INTO pressing_types(width,length,clay,name,clay_color,pieces_per_rack,rest_days,destination,pieces_per_sqm,body_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,values);
+ await db.query('UPDATE pressing_types SET clay_type_id=$2,clay_color_id=$3 WHERE id=$1',[row.id,identity.clay_type_id,identity.clay_color_id]);
  return row.id as number;
 }
 
 export async function validateProductOrder(db:Db,body:Body,typeId:number){
+ const selected=await one(db,'SELECT * FROM pressing_types WHERE id=$1',[typeId]);
+ if(selected){
+  if(!selected.pieces_per_sqm||selected.pieces_per_rack<=0||selected.rest_days<0)fail('ค่าผลิตยังไม่ครบ');
+  const clayTypeId=selected.clay_type_id??(await one(db,"SELECT id FROM clay_types WHERE code=CASE $1::text WHEN 'ขาว' THEN 'WHITE' WHEN 'สี' THEN 'COLORED' WHEN 'แดง' THEN 'RED' WHEN 'ศิลาแลง' THEN 'LATERITE' END",[selected.clay]))?.id;
+  if(!clayTypeId)fail('ประเภทดินยังไม่จับคู่ทะเบียน',409);
+  await resolveClayIdentity(db,clayTypeId,selected.clay_color_id,true);
+  if((body.expected_clay_type_id!==undefined&&body.expected_clay_type_id!==clayTypeId)||(body.expected_clay_color_id!==undefined&&body.expected_clay_color_id!==selected.clay_color_id))fail('ค่าผลิตเปลี่ยนประเภทดินหรือสีดินแล้ว กรุณาโหลดรายการใหม่',409);
+ }
  if(body.product_id==null){
   const profile=await one(db,'SELECT body_id FROM pressing_types WHERE id=$1',[typeId]);
   if(profile?.body_id&&body.purpose==='customer')fail('กรุณาเลือกสินค้าสำหรับใบสั่งลูกค้า');
@@ -82,9 +101,26 @@ export async function validateProductOrder(db:Db,body:Body,typeId:number){
  if(product.mounting_type==='mesh'&&body.purpose!=='customer')fail('สินค้าติดตาข่ายต้องมีออเดอร์ลูกค้า');
  return product;
 }
+export async function saveProductProduction(db:Db,id:number,input:Body){
+ const product=await one(db,'SELECT * FROM tile_products WHERE id=$1 FOR UPDATE',[id]);if(!product)fail('ไม่พบสินค้า',404);
+ if(input.expected_body_id===undefined||input.expected_body_id!==product.body_id)fail('แบบดินปั๊มของสินค้าเปลี่ยนแล้ว กรุณาโหลดใหม่',409);
+ let bodyId=input.body_id==null?null:integer(input.body_id,'แบบดินปั๊ม');
+ if(!bodyId)bodyId=await saveBody(db,{...product,name:input.new_body_name});
+ const profile=await one(db,'SELECT id FROM pressing_types WHERE body_id=$1 AND clay_type_id=$2 AND clay_color_id IS NOT DISTINCT FROM $3::integer',[bodyId,integer(input.clay_type_id,'ประเภทดิน'),input.clay_color_id??null]);
+ if(!profile&&input.clay_color_id!=null&&await one(db,"SELECT id FROM pressing_types WHERE body_id=$1 AND clay='สี' AND clay_color_id IS NULL LIMIT 1",[bodyId]))fail('แบบนี้มีค่าผลิตดินสีเดิมที่ยังไม่จับคู่ กรุณาตรวจยืนยันการจับคู่ก่อนสร้างรายการใหม่',409);
+ if(input.profile_id===undefined||(profile?.id??null)!==input.profile_id)fail('ค่าผลิตเปลี่ยนแล้ว กรุณาโหลดใหม่',409);
+ const production=input.production;
+ if(!production||typeof production!=='object'||Array.isArray(production))fail('กรุณากรอกค่าผลิต');
+ const profileId=await saveProfile(db,{...production as Body,body_id:bodyId,clay_type_id:input.clay_type_id,clay_color_id:input.clay_color_id??null},profile?.id);
+ await db.query('UPDATE tile_products SET body_id=$2 WHERE id=$1',[id,bodyId]);return profileId;
+}
 export async function snapshotOrder(db:Db,orderId:number,product:any){
+ const selected=await one(db,'SELECT t.* FROM pressing_types t JOIN pressing_orders o ON o.type_id=t.id WHERE o.id=$1',[orderId]);
+ const typeId=selected.clay_type_id??(await one(db,"SELECT id FROM clay_types WHERE code=CASE $1::text WHEN 'ขาว' THEN 'WHITE' WHEN 'สี' THEN 'COLORED' WHEN 'แดง' THEN 'RED' WHEN 'ศิลาแลง' THEN 'LATERITE' END",[selected.clay]))?.id;
+ const identity=await resolveClayIdentity(db,typeId,selected.clay_color_id,true);
+ await db.query('UPDATE pressing_orders SET clay_type_id=$2,clay_color_id=$3,clay_name_snapshot=$4,clay_color_name_snapshot=$5 WHERE id=$1',[orderId,identity.clay_type_id,identity.clay_color_id,identity.clay_name,identity.clay_color_name]);
  await db.query(`UPDATE pressing_orders o SET product_id=$2,product_snapshot=$3,requires_mesh=$4,
-  production_pieces_per_rack=t.pieces_per_rack,production_rest_days=t.rest_days,production_clay_color=t.clay_color,
+  production_pieces_per_rack=t.pieces_per_rack,production_rest_days=t.rest_days,production_clay_color=coalesce((SELECT name FROM clay_colors WHERE id=t.clay_color_id),t.clay_color),
   pieces_per_sqm=t.pieces_per_sqm,production_destination=t.destination,production_clay=t.clay
   FROM pressing_types t WHERE o.id=$1 AND t.id=o.type_id`,[orderId,product?.id??null,product?JSON.stringify(product):null,product?.mounting_type==='mesh']);
  return orderId;

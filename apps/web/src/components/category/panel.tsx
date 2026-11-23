@@ -6,12 +6,15 @@ import type { CatalogState } from "../../lib/tile-catalog";
 import type { Api, SessionUser } from "../../lib/types";
 import ColorChartPanel from "../color-chart/panel";
 import Catalog from "../pressing/catalog";
+import Clays from './clays';
+import type {ClayRegistryState} from '../../lib/clay-registry';
 import { CategoryRecords, type CategoryRecordsProps } from "./records";
 import TemperatureRanges, { loadRanges } from "./ranges";
 
 async function loadTiles(api: Api) {
   return api<CatalogState>("/catalog/state");
 }
+async function loadClays(api:Api){return api<ClayRegistryState>('/catalog/clays');}
 
 function TileCatalog({ data, api, user, onSaved }: CategoryRecordsProps<CatalogState>) {
   return <Catalog data={data} actions={{ api, onSaved, can: permission => user.permissions.includes(permission) }} />;
@@ -38,6 +41,7 @@ export default function CategoryPanel({ api, user }: { api: Api; user: SessionUs
       {current.id === "tiles" &&
         <CategoryRecords key="tiles" api={api} user={user} load={loadTiles} Component={TileCatalog} />}
       {current.id === "color-chart" && <ColorChartPanel api={api} user={user} />}
+      {current.id === "clays" && <CategoryRecords key="clays" api={api} user={user} load={loadClays} Component={Clays}/>}
       {current.id === "ranges" &&
         <CategoryRecords key="ranges" api={api} user={user} load={loadRanges} Component={TemperatureRanges} />}
     </div>

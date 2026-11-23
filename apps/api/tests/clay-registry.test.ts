@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import {tileFixture} from './tile-test-helpers.js';
+test('clay API exposes empty pigments, edits names, and protects clay identity',async t=>{
+ const f=await tileFixture(t);
+ const initial=await f.call('/catalog/clays');assert.equal(initial.status,200);
+ assert.equal(initial.body.clay_types.length,4);assert.deepEqual(initial.body.clay_colors,[]);
+ const white=initial.body.clay_types.find((c:any)=>c.code==='WHITE');
+ assert.equal((await f.call(`/catalog/clays/${white.id}`,'PUT',{code:'RED'})).status,400);
+ assert.equal((await f.call(`/catalog/clays/${white.id}`,'PUT',{name:'ขาวแก้ชื่อ',active:false})).status,200);
+ assert.equal((await f.call('/catalog/clay-colors','POST',{code:'BLUE',name:'น้ำเงินทดสอบ'})).status,201);
+ assert.equal((await f.call('/catalog/clay-colors','POST',{code:'blue',name:'ซ้ำ'})).status,409);
+ const state=await f.state();assert.equal(state.clay_types.find((c:any)=>c.id===white.id).name,'ขาวแก้ชื่อ');
+ assert.equal(state.clay_colors.length,1);
+ assert.equal((await f.call('/catalog/clays','GET',undefined,'')).status,401);
+ const role=(await f.pool.query("INSERT INTO roles(name,permissions) VALUES('QA clay reader','[\"pressing.read\"]') RETURNING id")).rows[0].id;
+ await f.pool.query("INSERT INTO users(username,name,password_hash,role_id) SELECT 'clay-reader','QA reader',password_hash,$1 FROM users WHERE username='tile-admin'",[role]);
+ const reader=(await f.call('/login','POST',{username:'clay-reader',password:'tile-test-password-only'})).cookie;
+ assert.equal((await f.call('/catalog/clays','GET',undefined,reader)).status,200);
+ assert.equal((await f.call(`/catalog/clays/${white.id}`,'PUT',{name:'forbidden'},reader)).status,403);
+ assert.equal((await f.call('/catalog/clay-colors','POST',{code:'FORBIDDEN',name:'forbidden'},reader)).status,403);
+});

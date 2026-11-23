@@ -53,7 +53,8 @@ test('physical bodies with opening stock cannot change shape and unused profile 
 
 test('legacy stock and historical sorting lock material identity while production settings may change',async t=>{
  const f=await prepared(t);
- const tile={width:2,length:8,clay:'สี',clay_color:'ฟ้า',pieces_per_rack:40,rest_days:0,destination:'kiln',pieces_per_sqm:90};
+ const pigment=(await f.call('/catalog/clay-colors','POST',{code:'QA-BLUE',name:'ฟ้า'})).body.id;
+ const tile={width:2,length:8,clay:'สี',clay_color:'ฟ้า',clay_color_id:pigment,pieces_per_rack:40,rest_days:0,destination:'kiln',pieces_per_sqm:90};
  const legacy=(await f.call('/pressing/types','POST',tile)).body.id;
  assert.equal((await f.call('/pressing/opening','POST',{source_key:'QA-LEGACY',type_id:legacy,as_of:f.day,pieces:100,ready_on:f.day,ready_confirmed:true})).status,201);
  assert.equal((await f.call('/pressing/types/'+legacy,'PUT',{...tile,clay_color:'เขียว'})).status,409);

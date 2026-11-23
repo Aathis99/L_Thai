@@ -16,7 +16,7 @@ export default function Orders({ data, actions }: { data: PressingData; actions:
   const prepare = actions.can("finishing.read") && actions.can("finishing.prepare");
   const activeTypes = data.types.filter((tile) => tile.active);
   const readyProducts = data.catalog?.products.filter(product => productProfiles(product, data.catalog!.profiles).length) ?? [];
-  const readyProfiles = readyProductionProfiles(activeTypes);
+  const readyProfiles = readyProductionProfiles(data.catalog?.profiles??activeTypes);
   const dialog = { api: actions.api, onSaved: actions.onSaved, onClose: () => setEditor(null) };
   const deleting = editor?.kind === "delete" && editor.order;
   const currentOrder = deleting && data.orders.find((order) => order.id === deleting.id);
@@ -24,7 +24,7 @@ export default function Orders({ data, actions }: { data: PressingData; actions:
   return (
     <>
       <Section title="ใบสั่งผลิต" action={manage && (
-        <button className="button primary" disabled={!readyProducts.length && !readyProfiles.length} onClick={() => setEditor({ kind: "order" })}>
+        <button className="button primary" onClick={() => setEditor({ kind: "order" })}>
           เพิ่มใบสั่งผลิต
         </button>
       )}>
@@ -44,7 +44,7 @@ export default function Orders({ data, actions }: { data: PressingData; actions:
                 )}
               >
                 {order.product_name && <p>{order.product_code} · {order.product_name}</p>}
-                <p>{order.production_clay ? `ดิน${order.production_clay}${order.production_clay_color ? ` · สีที่ผสม ${order.production_clay_color}` : ""}` : tileName(data.types, order.type_id)}</p>
+                <p>{order.production_clay ? `${order.clay_name_snapshot??`ดิน${order.production_clay}`}${order.clay_color_name_snapshot||order.production_clay_color ? ` · สีที่ผสม ${order.clay_color_name_snapshot??order.production_clay_color}` : ""}` : tileName(data.types, order.type_id)}</p>
                 {order.product_snapshot && <p>{[order.product_snapshot.shape,
                   order.product_snapshot.size_1 == null ? null : `${order.product_snapshot.size_1}${order.product_snapshot.size_2 == null ? "" : ` × ${order.product_snapshot.size_2}`} ${sizeUnits[order.product_snapshot.size_unit ?? ""] ?? order.product_snapshot.size_unit ?? ""}`,
                   order.product_snapshot.thickness_mm == null ? null : `หนา ${order.product_snapshot.thickness_mm} มม.`].filter(Boolean).join(" · ")}</p>}
@@ -102,17 +102,20 @@ function OrderForm({ types, colors, legacy, catalog, ...dialog }: DialogProps & 
 }) {
   const [typeId, setTypeId] = useState(legacy ? String(legacy.type_id) : "");
   const [productId, setProductId] = useState("");
+  const [clayTypeId,setClayTypeId]=useState(''),[clayColorId,setClayColorId]=useState('');
   const [search, setSearch] = useState("");
-  const [purpose,setPurpose]=useState<'customer'|'stock'>(legacy?.purpose ??
-    (catalog?.products.some(item => productProfiles(item, catalog.profiles).length) ? "customer" : "stock"));
+  const [purpose,setPurpose]=useState<'customer'|'stock'>(legacy?.purpose ?? 'customer');
   const [stockKind, setStockKind] = useState("preform");
   const [customer, setCustomer] = useState(0);
   const [percent, setPercent] = useState(10);
   const product = catalog?.products.find(item => item.id === Number(productId));
-  const allProfiles = catalog?.profiles ?? types.map(item => ({ ...item, body_id: item.body_id ?? null }));
+  const allProfiles:CatalogState['profiles'] = catalog?.profiles ?? types.map(item => ({ ...item, body_id: item.body_id ?? null }));
   const bareStock = !legacy && purpose === "stock" && stockKind === "preform";
   const profiles = bareStock ? readyProductionProfiles(allProfiles) : product ? productProfiles(product, allProfiles) : [];
-  const type = legacy ? types.find((tile) => tile.id === legacy.type_id) : profiles.find(item => item.id === Number(typeId));
+  const clayType=catalog?.clay_types?.find(c=>c.id===Number(clayTypeId));
+  const legacyType=legacy?types.find(tile=>tile.id===legacy.type_id):undefined;
+  const type = legacy ? legacyType&&{...legacyType,destination:legacy.production_destination??legacyType.destination,pieces_per_sqm:legacy.pieces_per_sqm??legacyType.pieces_per_sqm} : bareStock?profiles.find(item => item.id === Number(typeId)):
+    profiles.find(item=>item.clay_type_id===Number(clayTypeId)&&(item.clay_color_id??null)===(clayType?.code==='COLORED'?Number(clayColorId):null));
   const mesh = !bareStock && product?.mounting_type === "mesh";
   const products = catalog?.products.filter(item => item.active && (purpose !== "stock" || item.mounting_type !== "mesh") && (String(item.id) === productId ||
     productLabel(item).toLocaleLowerCase("th").includes(search.trim().toLocaleLowerCase("th")))) ?? [];
@@ -127,6 +130,8 @@ function OrderForm({ types, colors, legacy, catalog, ...dialog }: DialogProps & 
         ...(legacy ? { order_id: legacy.id } : {
           ...catalogOrderSelection(catalog?.products ?? [], allProfiles,
             bareStock ? null : formInteger(form, "product_id", "รายการสินค้า"), formInteger(form, "type_id", "ประเภทดินและสีที่ผสม"), purpose), purpose,
+          expected_clay_type_id:('clay_type_id' in (type??{}))?(type as CatalogState['profiles'][number]).clay_type_id:undefined,
+          expected_clay_color_id:('clay_color_id' in (type??{}))?(type as CatalogState['profiles'][number]).clay_color_id:undefined,
           customer_reference: formText(form, "customer_reference"),
         }),
         ...(purpose==='customer'?{customer_pieces:formInteger(form,'customer_pieces','ยอดลูกค้าสั่ง'),allowance_percent:formInteger(form,'allowance_percent','เปอร์เซ็นต์เผื่อ')}:{target_pieces:formInteger(form,'target_pieces','ยอดสั่งเก็บสต็อก')}),
@@ -145,13 +150,20 @@ function OrderForm({ types, colors, legacy, catalog, ...dialog }: DialogProps & 
           {!bareStock && <>
           <Field label="ค้นหารหัสหรือชื่อสินค้า" name="product_search" type="search" value={search} onChange={event => setSearch(event.target.value)} />
           <Choice label="รายการสินค้าและรุ่น" name="product_id" value={productId} onChange={value => {
-            setProductId(value); setTypeId("");
+            setProductId(value); setTypeId("");setClayTypeId('');setClayColorId('');
             if (catalog?.products.find(item => item.id === Number(value))?.mounting_type === "mesh") setPurpose("customer");
           }} options={products.map(item => ({ value: item.id,
             label: `${productLabel(item)}${productProfiles(item, catalog?.profiles ?? []).length ? "" : " · รอตั้งค่าผลิต"}` }))} />
           </>}
-          <Choice label="ประเภทดิน / สีที่ผสม" name="type_id" value={typeId} onChange={setTypeId}
+          {bareStock?<Choice label="ประเภทดิน / สีที่ผสม" name="type_id" value={typeId} onChange={setTypeId}
             options={profiles.map(item => ({ value: item.id, label: bareStock ? `${tileName(profiles, item.id)} · #${item.id}${item.body_id === null ? " · ประเภทเดิมยังไม่จับคู่" : ""}` : profileLabel(item) }))} />
+           :<>
+            <Choice label="ประเภทดิน" name="clay_type_id" value={clayTypeId} onChange={v=>{setClayTypeId(v);setClayColorId('');}} options={(catalog?.clay_types??[]).filter(c=>c.active).map(c=>({value:c.id,label:c.name}))}/>
+            {clayType?.code==='COLORED'&&<Choice label="สีดินที่ผสมในเนื้อดิน" name="clay_color_id" value={clayColorId} onChange={setClayColorId} options={(catalog?.clay_colors??[]).filter(c=>c.active).map(c=>({value:c.id,label:`${c.code} · ${c.name}`}))}/>}
+            <input type="hidden" name="type_id" value={type?.id??''}/>
+            {clayType?.code==='COLORED'&&!catalog?.clay_colors?.some(c=>c.active)&&<p>ยังไม่มีสีดินให้เลือก เพิ่มเมื่อข้อมูลพร้อมได้ที่ทะเบียนประเภทดิน</p>}
+            {clayType&&!type&&<p>รอตั้งค่าผลิตของสินค้าและดินที่เลือก</p>}
+           </>}
           {bareStock && <p className="helper">สั่งปั๊มดินพื้นเก็บตามประเภทผลิตและสีที่ผสม ใช้ประเภทเดิมที่ยังไม่จับคู่สินค้าได้ เมื่อนำไปทำสีหรือลาย ให้กันและเบิกดินไปยังใบสั่งสินค้าปลายทางที่ระบุงานจริงก่อน ใบเก็บดินพื้นนี้ไม่เป็นงานติดตาข่าย</p>}
           {!bareStock && product && !profiles.length && <p className="helper">สินค้านี้ยังไม่มีค่าผลิตครบ กรุณาตั้งค่าที่ทะเบียนกระเบื้องก่อนเปิดใบสั่ง</p>}
           {!bareStock && product && <p className="helper">{mesh ? "รุ่นติดตาข่าย ต้องมีออเดอร์ลูกค้า นับกระเบื้องย่อยเป็นแผ่น และพร้อมส่งหลังยืนยันติดตาข่ายเสร็จ" : "รุ่นนี้ไม่ระบุตาข่าย"}</p>}

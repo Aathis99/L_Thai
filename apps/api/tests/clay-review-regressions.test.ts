@@ -1,0 +1,77 @@
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import {tileFixture,productInput,bodyInput,profileInput} from './tile-test-helpers.js';
+import {randomUUID} from 'node:crypto';
+import {migrate} from '../src/database.js';
+test('legacy profile edits synchronize registry identity and honor retired clay',async t=>{
+ const f=await tileFixture(t),s=await f.state(),red=s.clay_types.find((c:any)=>c.code==='RED');
+ const input={width:2,length:2,...profileInput,destination:'kiln'};
+ const id=(await f.call('/pressing/types','POST',input)).body.id;
+ assert.equal((await f.call('/pressing/types/'+id,'PUT',{...input,clay:'แดง'})).status,200);
+ assert.equal((await f.pool.query('SELECT clay_type_id FROM pressing_types WHERE id=$1',[id])).rows[0].clay_type_id,red.id);
+ await f.call('/catalog/clays/'+red.id,'PUT',{active:false});
+ assert.equal((await f.call('/pressing/types','POST',{...input,clay:'แดง'})).status,409);
+});
+test('product production setup is atomic and rejects stale body links',async t=>{
+ const f=await tileFixture(t),s=await f.state(),white=s.clay_types.find((c:any)=>c.code==='WHITE');
+ const id=(await f.call('/catalog/products','POST',productInput)).body.id;
+ const path=`/catalog/products/${id}/production-settings`;
+ const input={expected_body_id:null,profile_id:null,body_id:null,new_body_name:'QA body',clay_type_id:white.id,clay_color_id:null,production:{...profileInput,destination:''}};
+ const bad=await f.call(path,'POST',input);assert.equal(bad.status,400);
+ assert.equal((await f.state()).bodies.length,0);assert.equal((await f.state()).products[0].body_id,null);
+ await f.pool.query("UPDATE tile_products SET notes='concurrent edit' WHERE id=$1",[id]);
+ const good=await f.call(path,'POST',{...input,production:{...profileInput,destination:'kiln'}});assert.equal(good.status,201);
+ assert.equal((await f.state()).products[0].notes,'concurrent edit');
+ assert.equal((await f.call(path,'POST',{...input,production:profileInput})).status,409);
+});
+test('metadata writes preserve body and stale first-profile creation cannot overwrite shared settings',async t=>{
+ const f=await tileFixture(t),s=await f.state(),white=s.clay_types.find((c:any)=>c.code==='WHITE');
+ const id=(await f.call('/catalog/products','POST',productInput)).body.id;
+ const body=(await f.call('/catalog/bodies','POST',bodyInput)).body.id;
+ await f.pool.query('UPDATE tile_products SET body_id=$2 WHERE id=$1',[id,body]);
+ const {body_id:ignored,...metadata}=productInput;
+ assert.equal((await f.call('/catalog/products/'+id,'PUT',{...metadata,notes:'new notes'})).status,200);
+ assert.equal((await f.state()).products[0].body_id,body);
+ const path=`/catalog/products/${id}/production-settings`;
+ const input={expected_body_id:body,body_id:body,profile_id:null,clay_type_id:white.id,clay_color_id:null,production:profileInput};
+ assert.equal((await f.call(path,'POST',input)).status,201);
+ assert.equal((await f.call(path,'POST',{...input,production:{...profileInput,pieces_per_rack:999}})).status,409);
+ assert.equal((await f.state()).profiles[0].pieces_per_rack,profileInput.pieces_per_rack);
+});
+test('used pigment profile permits rates after rename and distinct pigment codes may share names',async t=>{
+ const f=await tileFixture(t),s=await f.state(),colored=s.clay_types.find((c:any)=>c.code==='COLORED');
+ const body=(await f.call('/catalog/bodies','POST',bodyInput)).body.id;
+ const color=(await f.call('/catalog/clay-colors','POST',{code:'QA-A',name:'ฟ้า'})).body.id;
+ const input={...profileInput,body_id:body,clay_type_id:colored.id,clay_color_id:color};
+ const p=await f.call('/catalog/profiles','POST',input);assert.equal(p.status,201);
+ await f.pool.query("INSERT INTO pressing_orders(type_id,target_pieces,purpose) VALUES($1,10,'stock')",[p.body.id]);
+ await f.call('/catalog/clay-colors/'+color,'PUT',{name:'ฟ้าใหม่'});
+ assert.equal((await f.call('/catalog/profiles/'+p.body.id,'PUT',{...input,rest_days:2})).status,200);
+ const color2=(await f.call('/catalog/clay-colors','POST',{code:'QA-B',name:'ฟ้าใหม่'})).body.id;
+ assert.equal((await f.call('/catalog/profiles','POST',{...input,clay_color_id:color2})).status,201);
+ await migrate(f.pool);
+ assert.equal((await f.state()).profiles.length,2);
+ const legacyBody=(await f.call('/catalog/bodies','POST',{...bodyInput,name:'legacy pending'})).body.id;
+ await f.pool.query("INSERT INTO pressing_types(body_id,clay_type_id,clay,clay_color,pieces_per_rack,rest_days,destination) VALUES($1,$2,'สี','unmapped',40,0,'kiln')",[legacyBody,colored.id]);
+ assert.equal((await f.call('/catalog/profiles','POST',{...input,body_id:legacyBody})).status,409);
+});
+test('bare stock honors readiness and optional glaze; stale clay cannot silently replace selection',async t=>{
+ const f=await tileFixture(t),state=await f.state(),white=state.clay_types.find((c:any)=>c.code==='WHITE');
+ const profile={...profileInput,width:2,length:2};
+ const id=(await f.call('/pressing/types','POST',profile)).body.id;
+ const input={type_id:id,purpose:'stock',target_pieces:20,color_id:null};
+ assert.equal((await f.call('/pressing/orders','POST',input)).status,201);
+ await f.pool.query('UPDATE pressing_types SET pieces_per_sqm=NULL WHERE id=$1',[id]);
+ assert.equal((await f.call('/pressing/orders','POST',input)).status,400);
+ const unused=(await f.call('/pressing/types','POST',profile)).body.id;
+ await f.call('/pressing/types/'+unused,'PUT',{...profile,clay:'แดง'});
+ assert.equal((await f.call('/pressing/orders','POST',{...input,type_id:unused,expected_clay_type_id:white.id,expected_clay_color_id:null})).status,409);
+});
+test('preparing legacy order preserves its snapshotted route and area rate',async t=>{
+ const f=await tileFixture(t),id=(await f.call('/pressing/types','POST',{...profileInput,width:2,length:2})).body.id;
+ const order=(await f.pool.query("INSERT INTO pressing_orders(type_id,target_pieces,purpose,customer_reference,production_destination,production_clay,pieces_per_sqm) VALUES($1,110,'customer','QA-OLD','kiln','ขาว',88) RETURNING id",[id])).rows[0].id;
+ const result=await f.call('/finishing/prepare-order','POST',{request_id:randomUUID(),order_id:order,customer_pieces:100,allowance_percent:10,color_id:null});
+ assert.equal(result.status,201);
+ const saved=(await f.pool.query('SELECT production_destination,pieces_per_sqm FROM pressing_orders WHERE id=$1',[order])).rows[0];
+ assert.deepEqual(saved,{production_destination:'kiln',pieces_per_sqm:88});
+});

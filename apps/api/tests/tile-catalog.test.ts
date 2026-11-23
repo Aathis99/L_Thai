@@ -23,7 +23,10 @@ test('tile catalog retains variants and enables only explicitly configured clay 
  const profile=await f.call('/catalog/profiles','POST',{...profileInput,body_id:body.body.id});assert.equal(profile.status,201);
  assert.equal((await f.call('/catalog/profiles','POST',{...profileInput,body_id:body.body.id})).status,409);
  assert.equal((await f.call('/catalog/profiles','POST',{...profileInput,body_id:body.body.id,clay:'สี'})).status,400);
- for(const clay_color of ['ฟ้า','เขียว'])assert.equal((await f.call('/catalog/profiles','POST',{...profileInput,body_id:body.body.id,clay:'สี',clay_color})).status,201);
+ for(const [i,clay_color] of ['ฟ้า','เขียว'].entries()){
+  const colorId=(await f.call('/catalog/clay-colors','POST',{code:`QA-${i}`,name:clay_color})).body.id;
+  assert.equal((await f.call('/catalog/profiles','POST',{...profileInput,body_id:body.body.id,clay:'สี',clay_color_id:colorId})).status,201);
+ }
  const laterite=await f.call('/catalog/profiles','POST',{...profileInput,body_id:body.body.id,clay:'ศิลาแลง'});assert.equal(laterite.status,201);
  state=await f.state();assert.equal(state.profiles.length,4);assert.equal(state.profiles.find((p:any)=>p.id===profile.body.id).length,null);
  const color=(await f.pool.query("INSERT INTO color_chart_entries(display_order,name,normalized_name) VALUES(1,'QA','qa') RETURNING id")).rows[0].id;

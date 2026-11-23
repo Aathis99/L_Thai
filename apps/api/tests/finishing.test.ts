@@ -59,7 +59,7 @@ test('finishing tracks glazing, split firing, pooled QC and stock without spendi
   const worker = await one(pool, "INSERT INTO employees(code,prefix,first_name,last_name) VALUES('A','Dr.','Mary Jane','van der Meer') RETURNING id");
   const other = await one(pool, "INSERT INTO employees(code,first_name) VALUES('B','Worker 2') RETURNING id");
   const type = await saveType(pool, {
-    width: 2, length: 8, clay: 'ขาว', pieces_per_rack: 100, rest_days: 0, destination: 'color',
+    width: 2, length: 8, clay: 'ขาว', pieces_per_rack: 100, rest_days: 0, destination: 'color',pieces_per_sqm:50,
   });
   const color = await one(pool, `INSERT INTO color_chart_entries(display_order,name,normalized_name)
     VALUES(1,'ฟ้า','ฟ้า') RETURNING id`);
@@ -219,7 +219,7 @@ test('finished production routes require read and operation permissions independ
   assert.deepEqual(await (await call('/finishing/rounds', round, admin)).json(), await saved.json());
 
   const tile = await call('/pressing/types', { width: 1, length: 1, clay: 'แดง',
-    name: 'บรีส', rest_days: 0, pieces_per_rack: 50, destination: 'kiln' }, admin);
+    name: 'บรีส', rest_days: 0, pieces_per_rack: 50, destination: 'kiln',pieces_per_sqm:50 }, admin);
   assert.equal(tile.status, 201);
   const { id: type_id } = await tile.json() as { id: number };
   const legacy = await call('/pressing/orders', { type_id, target_pieces: 50, purpose: 'customer', customer_reference: 'LEGACY' }, admin);

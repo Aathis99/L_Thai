@@ -15,6 +15,7 @@ const reads = {
   sources: listSources,
   rounds: listRounds,
   ranges: listRanges,
+  clays: (db:PressingAccess['db'])=>all(db,'SELECT id,code,name,active FROM clay_types ORDER BY id'),
   qc: listQc,
   stock: listReceipts,
   workers: listWorkers,

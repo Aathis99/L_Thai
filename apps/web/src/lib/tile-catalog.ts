@@ -1,4 +1,5 @@
 import { formInteger, formText, type TileType } from "./pressing.ts";
+import type {ClayRegistryState} from './clay-registry.ts';
 
 export const clays = ["แดง", "ขาว", "ศิลาแลง", "สี"] as const;
 export const sizeUnits: Record<string, string> = { in: "นิ้ว", mm: "มม.", cm: "ซม." };
@@ -24,8 +25,8 @@ export interface CatalogProduct extends CatalogGeometry {
 }
 
 export interface CatalogBody extends CatalogGeometry { id: number; name: string }
-export interface CatalogProfile extends TileType { body_id: number | null }
-export interface CatalogState { products: CatalogProduct[]; bodies: CatalogBody[]; profiles: CatalogProfile[] }
+export interface CatalogProfile extends TileType { body_id: number | null; clay_type_id?:number|null;clay_color_id?:number|null }
+export interface CatalogState extends Partial<ClayRegistryState> { products: CatalogProduct[]; bodies: CatalogBody[]; profiles: CatalogProfile[] }
 
 export function geometryLabel(item: CatalogGeometry): string {
   const dimensions = [item.size_1, item.size_2].filter(value => value !== null);
@@ -47,7 +48,8 @@ export function productProfiles(product: CatalogProduct, profiles: readonly Cata
 }
 
 export function readyProductionProfiles<T extends TileType>(profiles: readonly T[]): T[] {
-  return profiles.filter(profile => profile.active &&
+  return profiles.filter(profile => profile.active && (profile as T & {clay_active?:boolean}).clay_active!==false && (profile as T & {clay_color_active?:boolean}).clay_color_active!==false &&
+    (!("clay_color_id" in profile)||profile.clay!=="สี"||Boolean(profile.clay_color_id)) &&
     profile.pieces_per_rack > 0 && profile.rest_days >= 0 && (profile.pieces_per_sqm ?? 0) > 0 &&
     (profile.destination === "color" || profile.destination === "kiln") &&
     (profile.clay !== "สี" || Boolean(profile.clay_color?.trim())));

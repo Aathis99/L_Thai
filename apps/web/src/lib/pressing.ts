@@ -31,6 +31,8 @@ export interface ProductionOrder {
   color_name?: string | null;
   target_square_meters?: number | null;
   production_clay?: string | null;
+  clay_name_snapshot?:string|null;
+  clay_color_name_snapshot?:string|null;
   production_clay_color?: string | null;
   production_pieces_per_rack?: number | null;
   production_rest_days?: number | null;

@@ -4,6 +4,7 @@ import { sizeUnits, geometryLabel, productLabel,
   type CatalogGeometry, type CatalogProduct, type CatalogState } from "../../lib/tile-catalog";
 import { Field } from "../fields";
 import { Card, Choice, Facts, FormDialog, Section, type PressingActions } from "./shared";
+import ProductionSettings from './production-settings';
 
 type DialogProps = Pick<PressingActions, "api" | "onSaved"> & { onClose: () => void };
 
@@ -12,6 +13,7 @@ export default function Catalog({ data, actions }: {
 }) {
   const [editor, setEditor] = useState<{ product?: CatalogProduct } | null>(null);
   const [search, setSearch] = useState("");
+  const [production,setProduction]=useState<CatalogProduct|null>(null);
   const manage = actions.can("pressing.manage");
   const dialog = { api: actions.api, onSaved: actions.onSaved, onClose: () => setEditor(null) };
   const query = search.trim().toLocaleLowerCase("th");
@@ -27,7 +29,7 @@ export default function Catalog({ data, actions }: {
       <div className="pressing-cards">{products.map(product => <Card key={product.id}
         title={`${product.product_code} · ${product.name} · #${product.id}`}
         meta={<span className={`badge ${product.active ? "good" : "neutral"}`}>{product.active ? "ใช้งาน" : "หยุดใช้"}</span>}
-        actions={manage && <button className="button warning" onClick={() => setEditor({ product })}>แก้ไขสินค้า</button>}>
+        actions={manage && <><button className="button warning" onClick={() => setEditor({ product })}>แก้ไขสินค้า</button><button className="button secondary" onClick={()=>setProduction(product)}>ตั้งค่าผลิต</button></>}>
         <p>{geometryLabel(product) || "ยังไม่ระบุขนาด"}</p>
         <Facts values={{ "รายละเอียดต้นฉบับ": product.description_raw || null,
           "หมายเหตุ": product.notes || null, "แถวต้นทาง": product.source_row ?? null,
@@ -35,6 +37,7 @@ export default function Catalog({ data, actions }: {
       </Card>)}</div>
     </Section>
     {manage && editor && <ProductForm {...dialog} product={editor.product} />}
+    {manage&&production&&<ProductionSettings product={production} data={data} actions={actions} onClose={()=>setProduction(null)}/>}
   </>;
 }
 
@@ -68,7 +71,7 @@ export function ProductForm({ product, ...dialog }: DialogProps & { product?: Ca
     path={product ? `/products/${product.id}` : "/products"} method={product ? "PUT" : "POST"} submitLabel="บันทึกรายการสินค้า"
     build={form => ({ ...geometryValues(form), product_code: formText(form, "product_code"), name: formText(form, "name"),
       description_raw: formText(form, "description_raw"), notes: formText(form, "notes") || null,
-      mounting_type: formText(form, "mounting_type") || null, body_id: product?.body_id ?? null, active: formText(form, "active") === "true" })}>
+      mounting_type: formText(form, "mounting_type") || null, active: formText(form, "active") === "true" })}>
     <div className="form-grid">
       <Field label="รหัสสินค้า" name="product_code" required defaultValue={product?.product_code ?? ""} />
       <Field label="ชื่อสินค้า / รายละเอียดลาย" name="name" required defaultValue={product?.name ?? ""} />

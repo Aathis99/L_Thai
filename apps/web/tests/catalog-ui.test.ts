@@ -56,7 +56,8 @@ test("register shows source details and product status without production setup 
   assert.match(html, /#42/);
   assert.match(html, /เพิ่มรายการสินค้า/);
   assert.match(html, /แก้ไขสินค้า/);
-  assert.doesNotMatch(html, /แบบดินปั๊ม|ค่าผลิต|พร้อมเปิดผลิต|รอตั้งค่าผลิต|ประเภทผลิตเดิม/);
+  assert.match(html, /ตั้งค่าผลิต/);
+  assert.doesNotMatch(html, /พร้อมเปิดผลิต|ประเภทผลิตเดิม/);
   assert.equal((html.match(/<section /g) ?? []).length, 1);
 });
 
@@ -69,7 +70,7 @@ test("read-only register retains source details without write controls", () => {
   assert.doesNotMatch(html, /เพิ่มรายการสินค้า|แก้ไขสินค้า/);
 });
 
-test("product editing saves description and notes while keeping the internal body and unknown dimensions", () => {
+test("product editing saves description and notes without resubmitting a stale body assignment", () => {
   const element = ProductForm({ api, onSaved, onClose() {}, product });
   const html = renderToStaticMarkup(element);
   assert.match(html, /name="description_raw"/);
@@ -82,7 +83,7 @@ test("product editing saves description and notes while keeping the internal bod
     active: "true", description_raw: "รายละเอียดเพิ่มเติม", notes: "แก้หมายเหตุ" })) form.set(name, value);
   assert.deepEqual(element.props.build!(form, ""), {
     product_code: "T-01", name: "ศิลาแลง", shape: null, size_1: null, size_2: null,
-    size_unit: "in", thickness_mm: null, mounting_type: null, body_id: 7, active: true,
+    size_unit: "in", thickness_mm: null, mounting_type: null, active: true,
     description_raw: "รายละเอียดเพิ่มเติม", notes: "แก้หมายเหตุ",
   });
 });

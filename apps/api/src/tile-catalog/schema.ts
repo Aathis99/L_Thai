@@ -29,7 +29,6 @@ export async function migrateTileCatalog(db:Db){
   ALTER TABLE pressing_types ALTER COLUMN width DROP NOT NULL;
   ALTER TABLE pressing_types ALTER COLUMN length DROP NOT NULL;
   DROP INDEX IF EXISTS pressing_types_body_clay_color;
-  CREATE UNIQUE INDEX IF NOT EXISTS pressing_types_body_clay_identity ON pressing_types(body_id,clay,(CASE WHEN clay='สี' THEN lower(coalesce(clay_color,'')) ELSE '' END)) WHERE body_id IS NOT NULL;
   ALTER TABLE pressing_orders ADD COLUMN IF NOT EXISTS product_id integer REFERENCES tile_products(id);
   ALTER TABLE pressing_orders ADD COLUMN IF NOT EXISTS product_snapshot jsonb;
   ALTER TABLE pressing_orders ADD COLUMN IF NOT EXISTS requires_mesh boolean NOT NULL DEFAULT false;

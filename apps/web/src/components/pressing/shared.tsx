@@ -95,7 +95,7 @@ export function Check({
   );
 }
 
-function Modal({
+export function Modal({
   title, onClose, busy, guardDismissal, children,
 }: { title: string; onClose: () => void; busy?: boolean; guardDismissal?: boolean; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);

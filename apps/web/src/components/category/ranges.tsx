@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { formInteger, formText } from "../../lib/pressing";
-import { clays } from "../../lib/tile-catalog";
+import { legacyClayKey,type ClayType } from '../../lib/clay-registry';
 import type { Api } from "../../lib/types";
 import { Field } from "../fields";
 import { Card, Choice, FormDialog, Section } from "../pressing/shared";
@@ -10,11 +10,12 @@ type Range = { clay: string | null; color_id: number | null; minimum: number; ma
 type Color = { id: number; name: string };
 
 export async function loadRanges(api: Api) {
-  const [ranges, colors] = await Promise.all([
+  const [ranges, colors, clays] = await Promise.all([
     api<{ items: Range[] }>("/finishing/ranges"),
     api<{ items: Color[] }>("/finishing/colors"),
+    api<{items:ClayType[]}>('/finishing/clays'),
   ]);
-  return { ranges: ranges.items, colors: colors.items };
+  return { ranges: ranges.items, colors: colors.items, clays:clays.items };
 }
 
 export default function TemperatureRanges({ data, api, user, onSaved }: CategoryRecordsProps<Awaited<ReturnType<typeof loadRanges>>>) {
@@ -30,7 +31,7 @@ export default function TemperatureRanges({ data, api, user, onSaved }: Category
     )}>
       {!data.ranges.length && <p>ยังไม่ได้ตั้งช่วงอุณหภูมิ</p>}
       <div className="pressing-cards">{data.ranges.map(range => <Card key={range.clay ?? range.color_id}
-        title={range.clay ? `ดิน${range.clay}` : (data.colors.find(color => color.id === range.color_id)?.name ?? `สี #${range.color_id}`)}>
+        title={range.clay ? (data.clays.find(c=>legacyClayKey(c.code)===range.clay)?.name??`ดิน${range.clay}`) : (data.colors.find(color => color.id === range.color_id)?.name ?? `สี #${range.color_id}`)}>
         <p>{range.minimum}–{range.maximum} °C</p>
       </Card>)}</div>
     </Section>
@@ -45,7 +46,7 @@ export default function TemperatureRanges({ data, api, user, onSaved }: Category
       <Choice label="ตั้งช่วงสำหรับ" name="kind" value={kind} onChange={setKind}
         options={[{ value: "clay", label: "ประเภทดิน" }, { value: "color", label: "สีเคลือบ" }]} />
       {kind === "clay" ? <Choice label="ประเภทดิน" name="clay"
-        options={clays.map(value => ({ value, label: value }))} /> :
+        options={data.clays.map(c => ({ value:legacyClayKey(c.code), label:c.name }))} /> :
         <Choice label="สีเคลือบ" name="color_id" options={data.colors.map(color => ({ value: color.id, label: color.name }))} />}
       <Field name="minimum" label="ต่ำสุด (°C)" type="number" step={1} min={1} required />
       <Field name="maximum" label="สูงสุด (°C)" type="number" step={1} min={1} required />

@@ -113,7 +113,8 @@ test('pressing catalog, orders and worker selection use session permissions', as
     ]) {
       assert.equal((await press('/types', 'POST', { ...tile, ...invalid })).status, 400);
     }
-    const unused = await press('/types', 'POST', { ...tile, clay: 'สี', clay_color: 'ทดสอบ🧱', destination: 'kiln' });
+    const pigment=(await pool.query("INSERT INTO clay_colors(code,name) VALUES('QA-TEST','ทดสอบ🧱') RETURNING id")).rows[0].id;
+    const unused = await press('/types', 'POST', { ...tile, clay: 'สี', clay_color_id:pigment, destination: 'kiln' });
     assert.equal(unused.status, 201);
     const unusedPath = '/types/' + unused.body.id;
     const created = (await press('/types')).body.items.find((row: { id: number }) => row.id === unused.body.id);
@@ -154,6 +155,7 @@ test('pressing catalog, orders and worker selection use session permissions', as
       customer_pieces: null, allowance_percent: null, allowance_pieces: null, color_id: null, color_name: null,
       pieces_per_sqm: 50, target_square_meters: 24, production_clay: 'ขาว',
       product_id:null,product_snapshot:null,requires_mesh:false,production_clay_color:null,
+      clay_type_id:(await pool.query("SELECT id FROM clay_types WHERE code='WHITE'")).rows[0].id,clay_color_id:null,clay_name_snapshot:'ดินขาว',clay_color_name_snapshot:null,
       production_pieces_per_rack:750,production_rest_days:4,production_destination:'color',product_name:null,product_code:null,
       pressed_pieces: 0, short_pieces: 1200, over_pieces: 0, has_entries: false, has_issues: false,
     });

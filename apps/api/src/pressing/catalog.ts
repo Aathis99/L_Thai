@@ -1,6 +1,7 @@
 import { fail, text } from '../auth.js';
 import { all, one, type Db } from '../database.js';
 import {snapshotOrder,validateProductOrder} from '../tile-catalog/catalog.js';
+import {resolveClayIdentity} from '../clay-registry/identity.js';
 
 type Body = Record<string, unknown>;
 
@@ -33,11 +34,12 @@ export function pressingText(value: unknown, label: string, required: boolean): 
 }
 
 export function listTypes(db: Db) {
-  return all(db, `SELECT id,width,length,clay,name,clay_color,pieces_per_rack,
-    rest_days,destination,pieces_per_sqm,active,body_id FROM pressing_types ORDER BY id`);
+  return all(db, `SELECT t.*,c.active clay_active,p.active clay_color_active FROM pressing_types t
+    LEFT JOIN clay_types c ON c.id=t.clay_type_id LEFT JOIN clay_colors p ON p.id=t.clay_color_id ORDER BY t.id`);
 }
 
 export async function saveType(db: Db, body: Body, id?: number): Promise<number> {
+  if(body.clay_color!==undefined)pressingText(body.clay_color,'รายละเอียดดินสี',false);
   const clay=body.clay==='จ้อ'?'ศิลาแลง':body.clay;
   if (clay !== 'แดง' && clay !== 'ขาว' && clay !== 'ศิลาแลง' && clay !== 'สี')
     fail('กรุณาเลือกประเภทดิน');
@@ -47,12 +49,19 @@ export async function saveType(db: Db, body: Body, id?: number): Promise<number>
   }
   if (body.destination !== 'color' && body.destination !== 'kiln')
     fail('กรุณาเลือกปลายทางเบิก');
+  const current=id?await one(db,'SELECT * FROM pressing_types WHERE id=$1',[id]):null;
+  const used=id?await one(db,`SELECT EXISTS(SELECT 1 FROM pressing_orders WHERE type_id=$1) OR EXISTS(SELECT 1 FROM pressing_stock_sources WHERE type_id=$1) OR EXISTS(SELECT 1 FROM pressing_sort_results WHERE type_id=$1) AS used`,[id]):null;
+  if(used?.used&&current&&(current.clay!==clay||(body.clay_color!==undefined&&body.clay_color!==current.clay_color)))fail('ประเภทผลิตมีประวัติแล้ว เปลี่ยนดินหรือสีดินไม่ได้',409);
+  const registryType=await one(db,"SELECT id FROM clay_types WHERE code=CASE $1::text WHEN 'ขาว' THEN 'WHITE' WHEN 'สี' THEN 'COLORED' WHEN 'แดง' THEN 'RED' WHEN 'ศิลาแลง' THEN 'LATERITE' END",[clay]);
+  const colorId=clay==='สี'?(body.clay_color_id==null?current?.clay_color_id??null:integer(body.clay_color_id,'สีดิน')):null;
+  const identity=await resolveClayIdentity(db,registryType.id,colorId,true);
+  if(used?.used&&current?.clay_color_id!=null&&current.clay_color_id!==colorId)fail('ประเภทผลิตมีประวัติแล้ว เปลี่ยนสีดินไม่ได้',409);
   const values = [
     positiveNumber(body.width, 'ความกว้าง'),
     positiveNumber(body.length, 'ความยาว'),
     clay,
     pressingText(body.name, 'ชื่อเรียก', false),
-    pressingText(body.clay_color, 'รายละเอียดดินสี', false),
+    used?.used?current.clay_color:identity.clay_color_name,
     integer(body.pieces_per_rack, 'จำนวนแผ่นต่อไม้'),
     integer(body.rest_days, 'จำนวนวันพัก', 0),
     body.destination,
@@ -69,6 +78,7 @@ export async function saveType(db: Db, body: Body, id?: number): Promise<number>
     : await one(db, `UPDATE pressing_types SET width=$1,length=$2,clay=$3,name=$4,clay_color=$5,
         pieces_per_rack=$6,rest_days=$7,destination=$8,pieces_per_sqm=$9 WHERE id=$10 RETURNING id`, [...values, id]);
   if (!row) fail('ไม่พบประเภทกระเบื้อง', 404);
+  await db.query('UPDATE pressing_types SET clay_type_id=$2,clay_color_id=$3 WHERE id=$1',[row.id,identity.clay_type_id,identity.clay_color_id]);
   return row.id;
 }
 
@@ -89,6 +99,7 @@ export function listOrders(db: Db) {
   SELECT o.id,o.type_id,o.target_pieces,o.purpose,o.customer_reference,
     o.customer_pieces,o.allowance_percent,o.allowance_pieces,o.color_id,o.color_name,o.pieces_per_sqm,o.production_clay,
     o.product_id,o.product_snapshot,o.requires_mesh,o.production_clay_color,o.production_pieces_per_rack,o.production_rest_days,o.production_destination,
+    o.clay_type_id,o.clay_color_id,o.clay_name_snapshot,o.clay_color_name_snapshot,
     o.product_snapshot->>'name' AS product_name,o.product_snapshot->>'product_code' AS product_code,
     o.target_pieces / o.pieces_per_sqm AS target_square_meters,
     coalesce(t.pieces,0) AS pressed_pieces,
@@ -120,8 +131,8 @@ export async function createOrder(db: Db, body: Body): Promise<number> {
   if (purpose === 'stock') {
     if (body.customer_pieces !== undefined || body.allowance_percent !== undefined) fail('งานสั่งเก็บสต็อกใช้ยอดเป้าหมาย ไม่ระบุยอดลูกค้าหรือยอดเผื่อ');
     const target=integer(body.target_pieces,'ยอดสั่งผลิตเก็บสต็อก');
-    const color=type.destination==='color' && (product || body.color_id !== undefined) ? await one(db,'SELECT id,name FROM color_chart_entries WHERE id=$1',[integer(body.color_id,'สีเคลือบ')]) : null;
-    if(type.destination==='color'&&(product || body.color_id !== undefined)&&!color)fail('ไม่พบสีเคลือบที่เลือก');
+    const color=type.destination==='color' && (product || body.color_id != null) ? await one(db,'SELECT id,name FROM color_chart_entries WHERE id=$1',[integer(body.color_id,'สีเคลือบ')]) : null;
+    if(type.destination==='color'&&(product || body.color_id != null)&&!color)fail('ไม่พบสีเคลือบที่เลือก');
     const saved=(await one(db,`INSERT INTO pressing_orders(type_id,target_pieces,purpose,customer_reference,color_id,color_name,pieces_per_sqm,production_destination,production_clay)
       VALUES($1,$2,'stock',$3,$4,$5,$6,$7,$8) RETURNING id`,[typeId,target,reference,color?.id??null,color?.name??null,type.pieces_per_sqm,type.destination,type.clay])).id;
     return snapshotOrder(db,saved,product);
@@ -153,7 +164,8 @@ export async function prepareLegacyOrder(db: Db, id: number, body: Body) {
     FROM pressing_orders o JOIN pressing_types t ON t.id=o.type_id WHERE o.id=$1`, [id]);
   if (!order) fail('ไม่พบใบสั่งผลิต', 404);
   if (order.purpose !== 'customer' || order.customer_pieces !== null) fail('ใบนี้ไม่มีข้อมูลออเดอร์ค้างให้เติม', 409);
-  const details = await orderProductionDetails(db, order.destination, body);
+  const destination=order.production_destination??order.destination;
+  const details = await orderProductionDetails(db, destination, body);
   const { released } = await one(db, `SELECT EXISTS (
     SELECT 1 FROM pressing_entries e JOIN pressing_stock_sources s ON s.entry_id=e.id
     JOIN pressing_releases r ON r.source_id=s.id WHERE e.order_id=$1) AS released`, [id]);
@@ -161,7 +173,7 @@ export async function prepareLegacyOrder(db: Db, id: number, body: Body) {
   await db.query(`UPDATE pressing_orders SET target_pieces=$2,customer_pieces=$3,allowance_percent=$4,
     allowance_pieces=$5,color_id=$6,color_name=$7,pieces_per_sqm=$8,production_destination=$9,production_clay=$10 WHERE id=$1`,
   [id, details.target, details.customer, details.percent, details.allowance, details.color?.id ?? null,
-    details.color?.name ?? null, order.type_rate, order.destination, order.clay]);
+    details.color?.name ?? null, order.pieces_per_sqm??order.type_rate, destination, order.production_clay??order.clay]);
   return id;
 }
 

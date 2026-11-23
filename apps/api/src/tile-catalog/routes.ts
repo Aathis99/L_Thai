@@ -2,7 +2,7 @@ import type {Request,Response} from 'express';
 import type {SessionRouteAccess} from '../app.js';
 import {audit} from '../database.js';
 import {fail} from '../auth.js';
-import {catalogState,saveBody,saveProduct,saveProfile} from './catalog.js';
+import {catalogState,saveBody,saveProduct,saveProfile,saveProductProduction} from './catalog.js';
 import {meshState,recordMesh,voidMesh} from './mesh.js';
 
 export async function handleMeshRoute(req:Request,res:Response,access:SessionRouteAccess){
@@ -14,6 +14,12 @@ export async function handleMeshRoute(req:Request,res:Response,access:SessionRou
 }
 
 export async function handleCatalogRoute(req:Request,res:Response,access:SessionRouteAccess){
+ const production=req.path.match(/^\/catalog\/products\/([1-9]\d*)\/production-settings$/);
+ if(production&&req.method==='POST'){
+  const productId=Number(production[1]);if(!Number.isSafeInteger(productId))fail('รหัสสินค้าไม่ถูกต้อง');
+  const id=await access.mutate('pressing.manage',async(db,actor)=>{const saved=await saveProductProduction(db,productId,req.body??{});await audit(db,actor.username,'ตั้งค่าผลิตสินค้า',String(productId));return saved;});
+  res.status(201).json({id});return true;
+ }
  if(req.method==='GET'&&req.path==='/catalog/state'){access.require('pressing.read');res.json(await catalogState(access.db));return true;}
  const match=req.path.match(/^\/catalog\/(products|bodies|profiles)(?:\/([1-9]\d*))?$/);
  if(!match)return false;

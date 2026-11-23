@@ -1,5 +1,6 @@
 const categoryTabs = [
   { id: "tiles", label: "ทะเบียนกระเบื้อง", permission: "pressing.read" },
+  { id: "clays", label: "ทะเบียนประเภทดิน", permission: "pressing.read" },
   { id: "color-chart", label: "ชาร์ตสี", permission: "color_chart.read" },
   { id: "ranges", label: "ช่วงอุณหภูมิ", permission: "finishing.read" },
 ] as const;
