@@ -36,8 +36,11 @@ export async function saveProduct(db:Db,body:Body,id?:number){
  const bodyId=body.body_id==null?null:integer(body.body_id,'แบบดินปั๊ม');
  if(bodyId&&!await one(db,'SELECT id FROM tile_bodies WHERE id=$1',[bodyId]))fail('ไม่พบแบบดินปั๊ม');
  if(body.active!==undefined&&typeof body.active!=='boolean')fail('สถานะสินค้าไม่ถูกต้อง');
- const values=[pressingText(body.product_code,'รหัสสินค้า',true),pressingText(body.name,'ชื่อสินค้า',true),...dimensions(body),mounting,bodyId,body.active??true];
- const row=id?await one(db,`UPDATE tile_products SET product_code=$1,name=$2,shape=$3,size_1=$4,size_2=$5,size_unit=$6,thickness_mm=$7,mounting_type=$8,body_id=$9,active=$10 WHERE id=$11 RETURNING id`,[...values,id]):await one(db,`INSERT INTO tile_products(product_code,name,shape,size_1,size_2,size_unit,thickness_mm,mounting_type,body_id,active) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,values);
+ const previous=id?await one(db,'SELECT description_raw,notes FROM tile_products WHERE id=$1',[id]):null;
+ const description=body.description_raw===undefined?(previous?.description_raw??''):(pressingText(body.description_raw,'คำบรรยายต้นฉบับ',false)??'');
+ const notes=body.notes===undefined?(previous?.notes??null):pressingText(body.notes,'หมายเหตุ',false);
+ const values=[pressingText(body.product_code,'รหัสสินค้า',true),pressingText(body.name,'ชื่อสินค้า',true),...dimensions(body),mounting,bodyId,body.active??true,description,notes];
+ const row=id?await one(db,`UPDATE tile_products SET product_code=$1,name=$2,shape=$3,size_1=$4,size_2=$5,size_unit=$6,thickness_mm=$7,mounting_type=$8,body_id=$9,active=$10,description_raw=$11,notes=$12 WHERE id=$13 RETURNING id`,[...values,id]):await one(db,`INSERT INTO tile_products(product_code,name,shape,size_1,size_2,size_unit,thickness_mm,mounting_type,body_id,active,description_raw,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,values);
  if(!row)fail('ไม่พบสินค้า',404);return row.id as number;
 }
 export async function saveProfile(db:Db,body:Body,id?:number){

@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { productLabel, productProfiles, catalogOrderSelection, meshCompletionLines, type CatalogProduct, type CatalogProfile } from "../src/lib/tile-catalog.ts";
+import { geometryLabel, productLabel, productProfiles, catalogOrderSelection, meshCompletionLines, type CatalogProduct, type CatalogProfile } from "../src/lib/tile-catalog.ts";
 
 const product: CatalogProduct = { id: 1, product_code: "QA-1", name: "แบบทดสอบ", shape: null,
  size_1: 2, size_2: null, size_unit: "in", thickness_mm: null, mounting_type: null, body_id: 7, active: true };
 const profile: CatalogProfile = { id: 10, body_id: 7, width: 2, length: null, clay: "ขาว", clay_color: null,
  name: null, pieces_per_rack: 40, rest_days: 0, destination: "kiln", pieces_per_sqm: 90, active: true };
+
+test("unknown dimensions stay blank in register labels", () => {
+ assert.equal(geometryLabel({ ...product, shape: "กลม", size_1: null }), "กลม");
+ assert.equal(geometryLabel({ ...product, size_1: null }), "");
+ assert.doesNotMatch(productLabel({ ...product, size_1: null }), /null|undefined/);
+});
 
 test("product labels distinguish duplicate codes by size, thickness, mesh and internal id", () => {
  const plain = productLabel(product);

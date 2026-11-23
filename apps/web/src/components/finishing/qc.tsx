@@ -4,13 +4,12 @@ import type { Api, SessionUser } from "../../lib/types";
 import { Field } from "../fields";
 import { Card, Choice, Facts, Section } from "../pressing/shared";
 import FinishingPage, { action, DateField, NumberField, number } from "./shared";
-import MeshPanel from "./mesh";
 
 const resources = ["rounds", "qc"] as const;
 
 export default function QcPage({ api, user, initialRoundId, openFinishedStock }: { api: Api; user: SessionUser; initialRoundId?: number; openFinishedStock: () => void; }) {
   return <FinishingPage api={api} user={user} resources={resources}>
-    {(data, { can, open, reverse, orderName, tileName, refresh }) => {
+    {(data, { can, open, reverse, orderName, tileName }) => {
       const orders = data.orders;
       const queue = data.rounds.map(round => ({ round, pending: pendingQcLoads(round) }))
         .filter(({ pending }) => pending.length > 0);
@@ -95,7 +94,6 @@ export default function QcPage({ api, user, initialRoundId, openFinishedStock }:
             <Facts values={{ "ยอดลูกค้าสั่ง": count(order.customer_pieces), "พร้อมส่ง": count(order.ready_pieces), "ยอดขาด": count(order.missing_pieces) }} />
           </Card>)}</div>
         </Section>
-        <MeshPanel api={api} user={user} refreshToken={data.qc} onChanged={refresh} />
       </>;
     }}
   </FinishingPage>;

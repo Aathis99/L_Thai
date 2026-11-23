@@ -5,7 +5,7 @@ export const sizeUnits: Record<string, string> = { in: "นิ้ว", mm: "ม�
 
 export interface CatalogGeometry {
   shape: string | null;
-  size_1: number;
+  size_1: number | null;
   size_2: number | null;
   size_unit: string;
   thickness_mm: number | null;
@@ -18,6 +18,9 @@ export interface CatalogProduct extends CatalogGeometry {
   mounting_type: string | null;
   body_id: number | null;
   active: boolean;
+  description_raw?: string | null;
+  notes?: string | null;
+  source_row?: number | null;
 }
 
 export interface CatalogBody extends CatalogGeometry { id: number; name: string }
@@ -25,7 +28,8 @@ export interface CatalogProfile extends TileType { body_id: number | null }
 export interface CatalogState { products: CatalogProduct[]; bodies: CatalogBody[]; profiles: CatalogProfile[] }
 
 export function geometryLabel(item: CatalogGeometry): string {
-  return [item.shape, `${item.size_1}${item.size_2 === null ? "" : ` × ${item.size_2}`} ${sizeUnits[item.size_unit] ?? item.size_unit}`,
+  const dimensions = [item.size_1, item.size_2].filter(value => value !== null);
+  return [item.shape, dimensions.length ? `${dimensions.join(" × ")} ${sizeUnits[item.size_unit] ?? item.size_unit}` : null,
     item.thickness_mm === null ? null : `หนา ${item.thickness_mm} มม.`].filter(Boolean).join(" · ");
 }
 
