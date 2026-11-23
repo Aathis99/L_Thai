@@ -521,6 +521,12 @@
   .form-grid {
     @apply grid grid-cols-[1fr_1fr] gap-y-0 gap-x-[18px];
   }
+  .product-dimensions {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 18px;
+  }
   .permission-grid {
     @apply grid grid-cols-[1fr_1fr] gap-y-0 gap-x-[12px];
   }

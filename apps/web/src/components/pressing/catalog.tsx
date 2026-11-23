@@ -50,16 +50,18 @@ function positiveNumber(form: FormData, name: string, label: string): number | n
 }
 
 function geometryValues(form: FormData) {
-  return { shape: formText(form, "shape") || null, size_1: positiveNumber(form, "size_1", "ขนาดมิติแรก"),
-    size_2: positiveNumber(form, "size_2", "ขนาดมิติที่สอง"), size_unit: formText(form, "size_unit"),
+  return { shape: formText(form, "shape") || null, size_1: positiveNumber(form, "size_1", "ความกว้าง"),
+    size_2: positiveNumber(form, "size_2", "ความยาว"), size_unit: formText(form, "size_unit"),
     thickness_mm: positiveNumber(form, "thickness_mm", "ความหนา") };
 }
 
 function GeometryFields({ item }: { item?: CatalogGeometry }) {
   return <>
     <Field label="รูปทรง (เมื่อทราบ)" name="shape" defaultValue={item?.shape ?? ""} />
-    <Field label="ขนาดมิติแรก (เมื่อทราบ)" name="size_1" type="number" min={0.001} step="any" defaultValue={item?.size_1 ?? ""} />
-    <Field label="ขนาดมิติที่สอง (เมื่อระบุ)" name="size_2" type="number" min={0.001} step="any" defaultValue={item?.size_2 ?? ""} />
+    <div className="product-dimensions">
+      <Field label="กว้าง" name="size_1" type="number" min={0.001} step="any" defaultValue={item?.size_1 ?? ""} />
+      <Field label="ยาว" name="size_2" type="number" min={0.001} step="any" defaultValue={item?.size_2 ?? ""} />
+    </div>
     <Choice label="หน่วยขนาด" name="size_unit" defaultValue={item?.size_unit ?? "in"}
       options={Object.entries(sizeUnits).map(([value, label]) => ({ value, label }))} />
     <Field label="ความหนา (มม. เมื่อระบุ)" name="thickness_mm" type="number" min={0.001} step="any" defaultValue={item?.thickness_mm ?? ""} />
