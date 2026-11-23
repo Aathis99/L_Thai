@@ -201,7 +201,7 @@ test('replacing or removing a photo leaves the entry intact and deleting the ent
     const response = await request(chart);
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
-      items: [{ id, display_order: 1, ...entry, has_image: hasImage }],
+      items: [{ id, display_order: 1, ...entry, reference_temperature_c: null, has_image: hasImage }],
     });
   };
   await list(false);

@@ -1,6 +1,7 @@
 import express, { type Request, type Response } from 'express';
 import type { SessionRouteAccess } from '../app.js';
 import { fail } from '../auth.js';
+import { parseReferenceTemperature, saveReferenceTemperature } from './reference-temperature.js';
 import { audit } from '../database.js';
 import { listColorChart, removeColorChartEntry, saveColorChartEntry } from './catalog.js';
 import {
@@ -56,6 +57,19 @@ async function handleColorChartImageRoute(
 }
 
 export async function handleColorChartRoute(req: Request, res: Response, access: SessionRouteAccess): Promise<boolean> {
+  const temperatureMatch = req.path.match(/^\/color-chart\/([^/]+)\/reference-temperature$/);
+  if (temperatureMatch && req.method === 'PUT') {
+    access.require('color_chart.read');
+    access.require('finishing.temperature');
+    const id = routeId(temperatureMatch[1]);
+    const value = parseReferenceTemperature(req.body);
+    await access.mutate('finishing.temperature', async (db, actor) => {
+      const change = await saveReferenceTemperature(db, id, value);
+      await audit(db, actor.username, 'แก้อุณหภูมิอ้างอิงของสี', JSON.stringify({color_id:id,...change}));
+    });
+    res.json({id,reference_temperature_c:value});
+    return true;
+  }
   const imageMatch = req.path.match(COLOR_CHART_IMAGE_PATH);
   if (imageMatch) return handleColorChartImageRoute(req, res, access, imageMatch[1]);
   const match = req.path.match(/^\/color-chart(?:\/([^/]+))?$/);

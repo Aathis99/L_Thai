@@ -17,9 +17,9 @@ export function validateColorChartNote(value: unknown): string | null {
 }
 
 export function listColorChart(db: Db) {
-  return all(db, `SELECT e.id,e.display_order,e.name,e.note,(i.entry_id IS NOT NULL) AS has_image
+  return all(db, `SELECT e.id,e.display_order,e.name,e.note,(i.entry_id IS NOT NULL) AS has_image,r.temperature_c AS reference_temperature_c
     FROM color_chart_entries e LEFT JOIN color_chart_images i ON i.entry_id=e.id
-    ORDER BY e.display_order`);
+    LEFT JOIN color_reference_temperatures r ON r.color_id=e.id ORDER BY e.display_order`);
 }
 
 export async function saveColorChartEntry(db: Db, body: Record<string, unknown>, id?: number): Promise<number> {

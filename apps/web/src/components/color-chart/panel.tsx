@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { canManageColorChart, filterColorChart, type ColorChartItem } from "../../lib/color-chart";
+import { canSetColorReferenceTemperature, referenceTemperatureLabel } from '../../lib/color-chart';
+import ReferenceTemperature from './reference-temperature';
 import type { Api, SessionUser } from "../../lib/types";
 
 const chartPath = "/color-chart";
 type Change =
+  | { kind: 'temperature'; fields: Pick<ColorChartItem,'reference_temperature_c'> }
   | { kind: "save"; fields: Pick<ColorChartItem, "name" | "note"> }
   | { kind: "delete" | "upload-image" | "delete-image" };
 
@@ -37,10 +40,12 @@ function ChartImage({ item, version, thumbnail = false }: { item: ColorChartItem
   );
 }
 
-function ChartDialog({ api, item, canManage, version, refreshError, onRetryRefresh, onClose, onChanged }: {
+function ChartDialog({ api, item, canManage, canSetTemperature, reload, version, refreshError, onRetryRefresh, onClose, onChanged }: {
   api: Api;
   item?: ColorChartItem;
   canManage: boolean;
+  canSetTemperature: boolean;
+  reload: () => Promise<ColorChartItem[] | null>;
   version: number;
   refreshError: string;
   onRetryRefresh: () => void;
@@ -170,6 +175,8 @@ function ChartDialog({ api, item, canManage, version, refreshError, onRetryRefre
             )}
           </>
         )}
+        {item && <ReferenceTemperature item={item} canSet={canSetTemperature} api={api} reload={reload}
+          onChanged={value=>onChanged(item.id,{kind:'temperature',fields:{reference_temperature_c:value}})} />}
       </div>
       {item && canManage && !editing && (
         <div className="modal-foot">
@@ -226,6 +233,9 @@ export default function ColorChartPanel({ api, user }: { api: Api; user: Session
   const savedItemAwaitingRefresh = typeof selection === "number" && !selectedItem;
 
   async function onChanged(id: number, change: Change) {
+    if (change.kind === 'temperature') {
+      setItems(current=>current.map(item=>item.id===id?{...item,...change.fields}:item));
+    }
     if (change.kind === "save") {
       if (selection === "new") {
         const updated = await refresh();
@@ -272,6 +282,7 @@ export default function ColorChartPanel({ api, user }: { api: Api; user: Session
                 <td><ChartImage key={imageVersions[item.id] ?? 0} item={item} version={imageVersions[item.id] ?? 0} thumbnail /></td>
                 <td>
                   <button type="button" className="chart-entry" onClick={() => setSelection(item.id)}>{item.name}</button>
+                  <div>อุณหภูมิอ้างอิง (°C): {referenceTemperatureLabel(item.reference_temperature_c)}</div>
                   {item.note && <div><span className="badge muted-badge">มีหมายเหตุ</span></div>}
                 </td>
               </tr>
@@ -283,7 +294,7 @@ export default function ColorChartPanel({ api, user }: { api: Api; user: Session
       )}
       {(selectedItem || (selection === "new" && canManage)) && (
         <ChartDialog key={selection} api={api} item={selectedItem} version={selectedItem ? imageVersions[selectedItem.id] ?? 0 : 0}
-          canManage={canManage} refreshError={error} onRetryRefresh={() => void refresh()}
+          canManage={canManage} reload={refresh} canSetTemperature={canSetColorReferenceTemperature(user.permissions)} refreshError={error} onRetryRefresh={() => void refresh()}
           onClose={() => setSelection(null)} onChanged={onChanged} />
       )}
     </section>

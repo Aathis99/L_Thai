@@ -10,6 +10,10 @@ export async function migrateColorChart(db: Db): Promise<void> {
     normalized_name TEXT NOT NULL UNIQUE CHECK (normalized_name <> ''),
     note TEXT
   )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS color_reference_temperatures (
+    color_id integer PRIMARY KEY REFERENCES color_chart_entries(id) ON DELETE CASCADE,
+    temperature_c double precision NOT NULL CHECK(temperature_c>0 AND temperature_c<'Infinity'::double precision)
+  )`);
   await db.query(`CREATE TABLE IF NOT EXISTS color_chart_images (
     entry_id INTEGER PRIMARY KEY REFERENCES color_chart_entries(id) ON DELETE CASCADE,
     image_bytes BYTEA NOT NULL CHECK (octet_length(image_bytes) BETWEEN 1 AND ${COLOR_CHART_IMAGE_MAX_BYTES})

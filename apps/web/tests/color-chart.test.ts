@@ -3,9 +3,9 @@ import { test } from "node:test";
 import { canManageColorChart, canOpenColorChart, filterColorChart, type ColorChartItem } from "../src/lib/color-chart.ts";
 
 const items: ColorChartItem[] = [
-  { id: 12, display_order: 1, name: "ดินแดง (TERRA COTTA)", note: null, has_image: false },
-  { id: 5, display_order: 2, name: "ดินแดงเคลือบใส (GLOOSSY GLAZED TERRA  COTTA)", note: null, has_image: false },
-  { id: 9, display_order: 6, name: "ขาวฟ้า", note: "แยกตอนเผา", has_image: true },
+  { id: 12, display_order: 1, name: "ดินแดง (TERRA COTTA)", note: null, reference_temperature_c: null, has_image: false },
+  { id: 5, display_order: 2, name: "ดินแดงเคลือบใส (GLOOSSY GLAZED TERRA  COTTA)", note: null, reference_temperature_c: null, has_image: false },
+  { id: 9, display_order: 6, name: "ขาวฟ้า", note: "แยกตอนเผา", reference_temperature_c: null, has_image: true },
 ];
 
 test("searches full names case-insensitively and keeps the chart order despite extra spaces", () => {

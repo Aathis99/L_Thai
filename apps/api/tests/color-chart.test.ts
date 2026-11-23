@@ -108,8 +108,8 @@ test('color chart CRUD preserves display names and order, rejects normalized dup
   const second = await chart('', 'POST', { name: 'ศิลาดล', note: '  ระวังการเผา  ' });
   assert.equal(second.status, 201);
   assert.deepEqual((await chart()).body, { items: [
-    { id: first.body.id, display_order: 1, name: 'ดินแดง (TERRA  COTTA)', note: null, has_image: false },
-    { id: second.body.id, display_order: 2, name: 'ศิลาดล', note: 'ระวังการเผา', has_image: false },
+    { id: first.body.id, display_order: 1, name: 'ดินแดง (TERRA  COTTA)', note: null, reference_temperature_c: null, has_image: false },
+    { id: second.body.id, display_order: 2, name: 'ศิลาดล', note: 'ระวังการเผา', reference_temperature_c: null, has_image: false },
   ] });
 
   assert.equal((await chart(`/${first.body.id}`, 'PUT', { name: 'ศิลาดล' })).status, 409);
@@ -123,7 +123,7 @@ test('color chart CRUD preserves display names and order, rejects normalized dup
   assert.equal((await chart(`/${second.body.id}`, 'PUT', { name: 'แก้ไม่ได้' })).status, 404);
   assert.equal((await chart('/2147483648', 'DELETE')).status, 400);
   assert.deepEqual((await chart()).body, { items: [
-    { id: first.body.id, display_order: 1, name: 'ดินแดง (terra cotta)', note: 'เตือน', has_image: false },
+    { id: first.body.id, display_order: 1, name: 'ดินแดง (terra cotta)', note: 'เตือน', reference_temperature_c: null, has_image: false },
   ] });
   assert.deepEqual((await pool.query("SELECT actor,action,target FROM audit WHERE action LIKE '%ชาร์ตสี' ORDER BY id")).rows, [
     { actor: 'admin', action: 'เพิ่มรายการชาร์ตสี', target: String(first.body.id) },
