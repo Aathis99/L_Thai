@@ -7,6 +7,28 @@ export function NumberInput({ name, label, value = 0, min = 0, step = 1 }: { nam
   return <Field name={name} label={label} type="number" min={min} step={step} defaultValue={value} required />;
 }
 export function TimeInput({ value = nowLocal() }: { value?: string }) { return <Field name="at" label="วันเวลาที่เกิดจริง (เวลาไทย)" type="datetime-local" defaultValue={value} required />; }
+export function FireTimeInput({ value = nowLocal() }: { value?: string }) {
+  const [date, setDate] = useState(value.slice(0, 10));
+  const [hour, setHour] = useState(value.slice(11, 13));
+  const [minute, setMinute] = useState(value.slice(14, 16));
+  const timeOptions = (length: number) => Array.from({ length }, (_, index) => {
+    const text = String(index).padStart(2, '0');
+    return { value: text, label: text };
+  });
+  return <fieldset className="kiln-time-input">
+    <legend>วันเวลาที่เกิดจริง (เวลาไทย)</legend>
+    <Field name="at_date" label="วันที่" type="date" value={date} onChange={event => setDate(event.target.value)} required />
+    <div className="kiln-clock-fields">
+      <Choice name="at_hour" label="ชั่วโมง (00–23)" value={hour} onChange={setHour} options={timeOptions(24)} />
+      <Choice name="at_minute" label="นาที (00–59)" value={minute} onChange={setMinute} options={timeOptions(60)} />
+    </div>
+    <button type="button" className="button secondary" onClick={() => {
+      const current = nowLocal();
+      setDate(current.slice(0, 10)); setHour(current.slice(11, 13)); setMinute(current.slice(14, 16));
+    }}>ใช้เวลาปัจจุบัน</button>
+    <p className="helper">รูปแบบ 24 ชั่วโมง เช่น 13:30 น.</p>
+  </fieldset>;
+}
 export function PlanForm({ data, initialSource,qa=true }: { data: Data; initialSource?: string;qa?:boolean }) {
   const [sourceId, setSource] = useState(initialSource ?? data.sources[0]?.sourceId ?? '');
   const [unit, setUnit] = useState('pieces'), [input, setInput] = useState('100');

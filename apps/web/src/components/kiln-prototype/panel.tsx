@@ -3,8 +3,8 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Api, SessionUser } from '../../lib/types';
 import { Field } from '../fields';
 import { Card, Choice, Facts, FormDialog, Section } from '../pressing/shared';
-import { DefectFields, NumberInput, PlanForm, PolicyFields, QcFields, RailFields, TimeInput, readQc } from './forms';
-import { type Command, type Data, type Source, atField, dateTime, fieldNumber as n, fieldText as t, grades, operationNames, outcomeNames, qty, selectedGrades } from './types';
+import { DefectFields, FireTimeInput, NumberInput, PlanForm, PolicyFields, QcFields, RailFields, TimeInput, readQc } from './forms';
+import { type Command, type Data, type Source, atField, fireAtField, dateTime, fieldNumber as n, fieldText as t, grades, operationNames, outcomeNames, qty, selectedGrades } from './types';
 
 type Editor = { title: string; revision: number;catalogVersion?:string; build: (f: FormData) => Command; children: ReactNode };
 const tabs = ['ภาพรวม', 'แผนและเตรียม', 'รอบเผาและไฟ', 'QC', 'ซ่อม/เผาซ้ำ', 'รายงาน', 'ประวัติ', 'ตั้งค่า'] as const;
@@ -45,7 +45,7 @@ export default function KilnPrototype({ api, user, initialTab = 'ภาพรว
   const loadItem = (loadId: number) => info(loads.find(l => l.id === loadId)!.sourceId);
   const name = (s: Source) => `${s.reference} · ${s.name} · ${s.code}`;
   const planForm = (sourceId?: string) => open('วางแผนเข้าเตา', f => ({ op: 'plan', sourceId: t(f, 'sourceId'), kilnId: n(f, 'kilnId'), rail: n(f, 'rail'), date: t(f, 'date'), unit: t(f, 'unit'), input: n(f, 'input'), pieces: n(f, 'pieces'), temperature: n(f, 'temperature') }), <PlanForm data={data} initialSource={sourceId} qa={qa} />);
-  const timeAction = (op: string, roundId: number, label: string) => button(label, f => ({ op, roundId, at: atField(f) }), <TimeInput />);
+  const timeAction = (op: string, roundId: number, label: string) => button(label, f => ({ op, roundId, at: fireAtField(f) }), <FireTimeInput />);
   return <div className="kiln-prototype">
     <Section title={qa?'งานเตา · แบบจำลอง QA':'งานเตา · แผนและการผลิต'} action={<button className="button secondary" onClick={() => void refresh().then(() => setError('')).catch(e => setError(e.message))}>โหลดล่าสุด</button>}>
       {qa?<p className="status-banner">พื้นที่ทดลองแยกจากระบบหลัก · ยอดทั้งหมดในหน้านี้เป็นยอดจำลอง ไม่ตัดสต็อกใช้งานจริง</p>:<p>ยืนยันเตรียมลงเบอร์เพื่อกันของจริง ผลคัดและยอดรับสต็อกเชื่อมกับส่วนงานเดิม</p>}
@@ -79,7 +79,7 @@ export default function KilnPrototype({ api, user, initialTab = 'ภาพรว
             <p>{r ? `รอบ #${r.id} · ${r.temperature}°C · เข้า ${dateTime(r.startedAt)}` : `กันเตรียม ${qty(reserved)} แผ่น`}</p>
             <div className="pressing-actions"><button className="button secondary" onClick={() => { setKiln(k.id); setTab(r ? 'รอบเผาและไฟ' : 'แผนและเตรียม'); }}>เปิดงานเบอร์นี้</button>
               {!r && reserved > 0 && !ready && button(`ยืนยันพร้อมเข้า ${k.id}/${rail}`, () => ({ op: 'rail-ready', kilnId: k.id, rail }), <p>ยืนยันว่าจัดของเตรียมลงเบอร์นี้เรียบร้อยแล้ว การเพิ่ม/ย้ายของภายหลังต้องยืนยันพร้อมใหม่</p>)}
-              {!r && ready && button(`เข้าเผา ${k.id}/${rail}`, f => ({ op: 'start', kilnId: k.id, rail, temperature: n(f, 'temperature'), at: atField(f) }), <><TimeInput /><NumberInput name="temperature" label="อุณหภูมิเป้าหมาย (°C)" value={qa?1150:0} min={1} /><p>ระบบตรวจของพร้อม สี ดิน รูปแบบ และเตาว่างก่อนเริ่ม</p></>)}
+              {!r && ready && button(`เข้าเผา ${k.id}/${rail}`, f => ({ op: 'start', kilnId: k.id, rail, temperature: n(f, 'temperature'), at: fireAtField(f) }), <><FireTimeInput /><NumberInput name="temperature" label="อุณหภูมิเป้าหมาย (°C)" value={qa?1150:0} min={1} /><p>ระบบตรวจของพร้อม สี ดิน รูปแบบ และเตาว่างก่อนเริ่ม</p></>)}
             </div>
           </div>;
         })}
@@ -105,7 +105,7 @@ export default function KilnPrototype({ api, user, initialTab = 'ภาพรว
       </>}><p>{name(info(r.sourceId))}</p><strong>{qty(r.pieces)} แผ่น</strong></Card>)}</div></Section>
     </>}
     {tab === 'รอบเผาและไฟ' && <Section title="รอบเผา"><div className="pressing-cards">{rounds.slice().reverse().map(r => <Card key={r.id} title={`รอบ #${r.id} · ${r.kilnId}/${r.rail} · ${r.temperature}°C`} actions={<>
-      {button('บันทึกไฟ', f => ({ op: 'log', roundId: r.id, at: atField(f), temperature: n(f, 'temperature'), cone: t(f, 'cone'), note: t(f, 'note') }), <><TimeInput /><NumberInput name="temperature" label="อุณหภูมิจริง (°C)" value={0} /><Field name="cone" label="เบอร์โคน (เช่น 05)" /><Field name="note" label="หมายเหตุ" /></>)}
+      {button('บันทึกไฟ', f => ({ op: 'log', roundId: r.id, at: fireAtField(f), temperature: n(f, 'temperature'), cone: t(f, 'cone'), note: t(f, 'note') }), <><FireTimeInput /><NumberInput name="temperature" label="อุณหภูมิจริง (°C)" value={0} /><Field name="cone" label="เบอร์โคน (เช่น 05)" /><Field name="note" label="หมายเหตุ" /></>)}
       {!r.stoppedAt && timeAction('stop', r.id, 'ปิดไฟ')}
       {r.stoppedAt && !r.withdrawnAt && timeAction('withdraw', r.id, 'นำเบอร์ออกจากเตา')}
       {r.withdrawnAt && !r.unloadedAt && timeAction('unload', r.id, 'เอาของลงเสร็จ คืนเบอร์ว่าง')}

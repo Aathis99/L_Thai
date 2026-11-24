@@ -3,6 +3,7 @@ import { count, destinations, formInteger, formText, orderName, orderPurposes, t
 import { catalogOrderSelection, productLabel, productProfiles, profileLabel, readyProductionProfiles, sizeUnits, type CatalogState } from "../../lib/tile-catalog";
 import { Field } from "../fields";
 import { Card, Choice, Facts, FormDialog, Section, type PressingActions } from "./shared";
+import ProductPicker from "./product-picker";
 
 type Editor = { kind: "order" } | { kind: "target" | "delete" | "prepare"; order: ProductionOrder };
 
@@ -103,7 +104,6 @@ function OrderForm({ types, colors, legacy, catalog, ...dialog }: DialogProps & 
   const [typeId, setTypeId] = useState(legacy ? String(legacy.type_id) : "");
   const [productId, setProductId] = useState("");
   const [clayTypeId,setClayTypeId]=useState(''),[clayColorId,setClayColorId]=useState('');
-  const [search, setSearch] = useState("");
   const [purpose,setPurpose]=useState<'customer'|'stock'>(legacy?.purpose ?? 'customer');
   const [stockKind, setStockKind] = useState("preform");
   const [customer, setCustomer] = useState(0);
@@ -117,8 +117,7 @@ function OrderForm({ types, colors, legacy, catalog, ...dialog }: DialogProps & 
   const type = legacy ? legacyType&&{...legacyType,destination:legacy.production_destination??legacyType.destination,pieces_per_sqm:legacy.pieces_per_sqm??legacyType.pieces_per_sqm} : bareStock?profiles.find(item => item.id === Number(typeId)):
     profiles.find(item=>item.clay_type_id===Number(clayTypeId)&&(item.clay_color_id??null)===(clayType?.code==='COLORED'?Number(clayColorId):null));
   const mesh = !bareStock && product?.mounting_type === "mesh";
-  const products = catalog?.products.filter(item => item.active && (purpose !== "stock" || item.mounting_type !== "mesh") && (String(item.id) === productId ||
-    productLabel(item).toLocaleLowerCase("th").includes(search.trim().toLocaleLowerCase("th")))) ?? [];
+  const products = catalog?.products.filter(item => item.active && (purpose !== "stock" || item.mounting_type !== "mesh")) ?? [];
   const allowance = Math.ceil(customer * percent / 100);
   return (
     <FormDialog {...dialog} title={legacy ? "เติมข้อมูลใบสั่งผลิตค้าง" : "เพิ่มใบสั่งผลิต"}
@@ -147,14 +146,12 @@ function OrderForm({ types, colors, legacy, catalog, ...dialog }: DialogProps & 
           {purpose === "stock" && <Choice label="งานที่สั่งเก็บสต็อก" name="stock_kind" value={stockKind} onChange={value => {
             setStockKind(value); setTypeId(""); setProductId("");
           }} options={[{ value: "preform", label: "ดินพื้นตามประเภทผลิต ไม่ระบุสินค้า" }, { value: "product", label: "สินค้ารุ่นไม่ติดตาข่าย" }]} />}
-          {!bareStock && <>
-          <Field label="ค้นหารหัสหรือชื่อสินค้า" name="product_search" type="search" value={search} onChange={event => setSearch(event.target.value)} />
-          <Choice label="รายการสินค้าและรุ่น" name="product_id" value={productId} onChange={value => {
+          {!bareStock && <ProductPicker value={productId} onChange={value => {
             setProductId(value); setTypeId("");setClayTypeId('');setClayColorId('');
             if (catalog?.products.find(item => item.id === Number(value))?.mounting_type === "mesh") setPurpose("customer");
           }} options={products.map(item => ({ value: item.id,
             label: `${productLabel(item)}${productProfiles(item, catalog?.profiles ?? []).length ? "" : " · รอตั้งค่าผลิต"}` }))} />
-          </>}
+          }
           {bareStock?<Choice label="ประเภทดิน / สีที่ผสม" name="type_id" value={typeId} onChange={setTypeId}
             options={profiles.map(item => ({ value: item.id, label: bareStock ? `${tileName(profiles, item.id)} · #${item.id}${item.body_id === null ? " · ประเภทเดิมยังไม่จับคู่" : ""}` : profileLabel(item) }))} />
            :<>

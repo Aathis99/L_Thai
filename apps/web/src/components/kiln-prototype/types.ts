@@ -16,6 +16,15 @@ export const day = () => nowLocal().slice(0, 10);
 export const fieldText = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
 export const fieldNumber = (f: FormData, key: string) => Number(fieldText(f, key));
 export const atField = (f: FormData, key = 'at') => fieldText(f, key) + ':00+07:00';
+export function fireAtField(f: FormData): string {
+  const date = fieldText(f, 'at_date'), hour = fieldText(f, 'at_hour'), minute = fieldText(f, 'at_minute');
+  const parsed = new Date(`${date}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date)
+    throw new Error('กรุณาระบุวันที่ให้ถูกต้อง');
+  if (!/^\d{1,2}$/.test(hour) || Number(hour) > 23 || !/^\d{1,2}$/.test(minute) || Number(minute) > 59)
+    throw new Error('กรุณาระบุเวลา 24 ชั่วโมง: ชั่วโมง 00–23 และนาที 00–59');
+  return `${date}T${hour.padStart(2, '0')}:${minute.padStart(2, '0')}:00+07:00`;
+}
 export const selectedGrades = (f: FormData, prefix: string) => grades.filter(g => f.has(prefix + g));
 export const operationNames: Record<string, string> = {
   demo: 'เริ่มชุดตัวอย่างใหม่', import: 'เพิ่มงานจากสำเนา', plan: 'วางแผน', reserve: 'เตรียมลงเบอร์', move: 'แบ่ง/ย้ายเบอร์', cancel: 'ยกเลิกเตรียม',

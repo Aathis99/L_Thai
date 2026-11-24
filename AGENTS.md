@@ -2,6 +2,8 @@
 
 At the start of a new chat, read `docs/CURRENT.md` before editing. Read `GLOSSARY.md` for domain terms and `docs/adr/` when an architectural decision is relevant. Treat the code and fresh verification as evidence if a status document is stale.
 
+LThai is an ERP for the tile factory, developed incrementally from shop-floor recording and production into connected departmental workflows. Before adding a module or changing a cross-module workflow, read `docs/erp.md`. In the design, identify shared master data, the source owner, and incoming/outgoing records; reuse existing identities and preserve traceability. Distinguish implemented capabilities from future ERP scope.
+
 Docker (`compose.docker.yaml`) is the primary runtime. The app is on port 3001 and PostgreSQL on 5434. Native PostgreSQL on 5433 is a separate legacy copy backed up by `npm run db:backup`. For Docker backups and restore rehearsals, follow `docs/docker.md#docker-backup`.
 
 When testing a new module:
