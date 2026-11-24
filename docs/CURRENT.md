@@ -1,13 +1,15 @@
 # สถานะงานล่าสุด
 
-อัปเดต: 23 พฤศจิกายน 2026
+อัปเดต: 24 พฤศจิกายน 2026
 
-## ล่าสุด — อุณหภูมิอ้างอิงชาร์ตสีเปิด QA แล้ว ยังไม่ขึ้นหลัก
+## ล่าสุด — อุณหภูมิอ้างอิงชาร์ตสีใช้งานจริงแล้ว
 
-- ผู้ใช้อนุมัติNativeแล้ว พัฒนาแยกตารางค่าอ้างอิง/APIตรวจสิทธิ์/เว็บแสดงและแก้ค่าเสร็จ เปิด http://localhost:3160 (API4160) project `lthai-color-reference-qa` ฐาน/role `lthai_color_reference_qa`; บัญชีอยู่ `.qa/color-reference-temperature/login.json`
-- สำรองหลัก `data/backups/color-reference-2026-11-23T08-39-35-200Z/lthai.dump` SHA256 `d1e67abc6ce4de5c0fd24508da7919a30475b986d92e03a9ade22c3017cb694b` ตรวจarchiveและกู้QAสำเร็จ migrationสองรอบข้อมูลเดิม45ตารางตรงกัน หลัก3001ยังhealthyและไม่มีตาราง color_reference_temperatures
-- ผลสด: legacy14/API120/เว็บ47 รวม181ผ่าน0ล้ม9ข้าม (Excelส่วนตัว5/importer QAเก่า4) checkและDocker QA buildผ่าน ตรวจbrowserบันทึกทศนิยม/ล้างค่า/แสดงค่าว่าง/มือถือ390pxผ่าน รีวิวอิสระพบ2จุดโหลดข้อมูลแก้แล้ว ยังไม่ได้จำลองเครือข่ายขาดและการลบข้ามแท็บในbrowser อ่านข้อจำกัดในคู่มือ
-- คู่มือ [ตรวจรับอุณหภูมิอ้างอิง](color-reference-temperature-qa-guide.md) สีตัวอย่าง `QA-COLOR-REF ไม่ย้ายขึ้นหลัก` และบัญชีQAไม่ย้ายโดยปริยาย ขั้นถัดไปให้ผู้ใช้ตรวจQA/เลือกข้อมูลก่อนTask5 ยังไม่deployหลักหรือpush
+- ผู้ใช้สั่งนำขึ้นจริง24พฤศจิกายน2026 และยืนยัน **ไม่ย้ายค่า QA เริ่มอุณหภูมิว่างทั้งหมด** (พบ QA ดินแดงเคลือบใส1050°C/พีช1220°C แต่ไม่ย้าย) deploy code cb7110c บนmainที่ http://127.0.0.1:3001 แล้ว ไม่pushในรอบนี้
+- หยุดเว็บ/APIระหว่างcutover สำรองหลักใหม่ data/backups/reference-temperature-production-20261124-013933-970/lthai.dump SHA256 ECE42E0F4ED61FB76119540EF47172932B1B07CCBB6F5A7F503CCA454F88D433 ตรวจarchive/checksumผ่าน ไม่restoreQAทับหลัก เก็บimagesเดิมtag before-reference-20261124 ไว้
+- ตรวจtarget lthai/lthai และเทียบจำนวน/แฮชทุกคอลัมน์เดิมครบ45ตารางหลังmigration/รันซ้ำ/ลบQAตรงกันทั้งหมด สินค้า161/ชาร์ตสี90/บัญชี2/ใบสั่ง0 อุณหภูมิอ้างอิง0 ไม่ย้ายสีหรือบัญชีQA ช่วงเผา/รูป/ข้อมูลเดิมคงอยู่
+- ตรวจสดก่อนdeploy: APIอุณหภูมิ2tests/เว็บ47ผ่าน0ล้ม TypeScriptและDocker API/web buildผ่าน (ชุดเต็มรอบQA181ผ่าน0ล้ม9ข้ามตามประวัติ) หลังdeployทั้ง3services healthy HTTP3001เปิดหน้าล็อกอินและhealthยืนยันPostgreSQL; ยังไม่ได้ตรวจหน้าชาร์ตสีด้วยบัญชีหลักหลังdeployเพราะsessionหมดอายุ ไม่สร้างข้อมูลทดสอบหรือบัญชีใหม่ในหลัก
+- สำรองQAสุดท้าย data/backups/reference-temperature-qa-final-20261124-014045-125/lthai.dump SHA256 430F3880FC9EA411C04692EB89AF5E05364B8804E23EA26813018A4A9231EF47 ตรวจarchive/checksumผ่าน แล้วลบเฉพาะproject lthai-color-reference-qa/ฐาน/role lthai_color_reference_qa ตรวจไม่เหลือแล้ว เหลือstackหลักชุดเดียว เก็บbackupsและprivate manifestsใน .qa/color-reference-temperature/
+- ขั้นถัดไป: เข้าระบบหลัก → หมวดหมู่ → ชาร์ตสี กรอกอุณหภูมิอ้างอิงจริงเมื่อข้อมูลพร้อม ค่าอ้างอิงยังไม่เปลี่ยนกติกาเข้าเตา/ช่วงต่ำสุดสูงสุด/โคน/สีดิน คู่มือ docs/color-reference-temperature-qa-guide.md ระบุQAปิดแล้ว
 
 ### ข้อตกลงการออกแบบ
 
