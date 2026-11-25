@@ -114,7 +114,7 @@ export default function KilnPrototype({ api, user, initialTab = 'ภาพรว
       <Facts values={{ 'จุดไฟ': dateTime(r.startedAt), 'ปิดไฟ': dateTime(r.stoppedAt), 'นำออก': dateTime(r.withdrawnAt), 'ลงของเสร็จ': dateTime(r.unloadedAt) }} />
       {r.loads.map(l => <div key={l.id}><p>รายการ #{l.id} · {name(info(l.sourceId))} · เข้าเผาจริง {qty(l.pieces)} · รอคัด {qty(pending(l.id, l.pieces))}</p>
         <small>เกณฑ์ตอนยืนยัน: ดิน {l.criteria.clayRange?.join('–')} · สี {l.criteria.colorRange?.join('–') || 'ไม่ใช้สี'} · รูปแบบ {l.criteria.shapeRange?.join('–')} °C</small>
-        {button('แก้ยอดและข้อมูลที่เกี่ยวข้อง', f => ({ op: 'correct', loadId: l.id, pieces: n(f, 'pieces'), note: t(f, 'note'),
+        {button('แก้ยอดและข้อมูลที่เกี่ยวข้อง', f => ({ op: 'correct', loadId: l.id, pieces: n(f, 'pieces'), note: t(f, 'note'),reason:t(f,'reason'),
           qcs: state.qcs.filter(q => q.loadId === l.id).map(q => ({ id: q.id, ...readQc(f, `q${q.id}_`) })),
           allocations: state.allocations.filter(a => state.qcs.some(q => q.loadId === l.id && q.id === a.qcId)).map(a => ({ id: a.id, pieces: n(f, `a${a.id}`) })),
           repairReady: state.repairReady.filter(x => state.qcs.some(q => q.loadId === l.id && q.id === x.qcId)).map(x => ({ qcId: x.qcId, kind: x.kind, pieces: n(f, `r${x.qcId}_${x.kind}`) })),
@@ -122,7 +122,7 @@ export default function KilnPrototype({ api, user, initialTab = 'ภาพรว
           {state.qcs.filter(q => q.loadId === l.id).map(q => <fieldset key={q.id}><legend>ผลคัด #{q.id}</legend><QcFields initial={q} prefix={`q${q.id}_`} /></fieldset>)}
           {state.allocations.filter(a => state.qcs.some(q => q.loadId === l.id && q.id === a.qcId)).map(a => <NumberInput key={a.id} name={`a${a.id}`} label={`${a.destination === 'order' ? 'กันให้ออเดอร์' : 'รับสต็อก'} #${a.id} · ${a.grade}`} value={a.pieces} />)}
           {state.repairReady.filter(x => state.qcs.some(q => q.loadId === l.id && q.id === x.qcId)).map(x => <NumberInput key={`${x.qcId}:${x.kind}`} name={`r${x.qcId}_${x.kind}`} label={`ซ่อมพร้อม QC #${x.qcId} · ${outcomeNames[x.kind]}`} value={x.pieces} />)}
-          <Field name="note" label="หมายเหตุการแก้" /><p>แก้เฉพาะยอดที่ผิด ระบบบันทึกพร้อมกันเมื่อยอดทั้งหมดสอดคล้อง ไม่ปรับ QC/สต็อกแทนเอง</p></>, 'correct')}
+          <Field name="reason" label="เหตุผลการแก้ไข" required /><Field name="note" label="หมายเหตุการแก้" /><p>แก้เฉพาะยอดที่ผิด ระบบบันทึกพร้อมกันเมื่อยอดทั้งหมดสอดคล้อง ไม่ปรับ QC/สต็อกแทนเอง</p></>, 'correct')}
       </div>)}
       <TemperaturePlot logs={r.logs} />
       {!r.logs.length && <p>ยังไม่มีบันทึกอุณหภูมิ ช่องที่ขาดไม่ใช่ศูนย์</p>}
@@ -131,12 +131,12 @@ export default function KilnPrototype({ api, user, initialTab = 'ภาพรว
       </p>)}
     </Card>)}</div>{!rounds.length && <p>ยังไม่มีรอบเผา ไปภาพรวมเพื่อเริ่มจากเบอร์ที่เตรียมของไว้</p>}</Section>}
     {tab === 'QC' && <>
-      <Section title="คิวรอคัด"><div className="pressing-cards">{loads.filter(l => l.round.unloadedAt && pending(l.id, l.pieces) > 0 && (!kiln || l.round.kilnId === kiln) && matches(l.sourceId)).map(l => <Card key={l.id} title={`รอบ #${l.round.id} · รายการ #${l.id}`} actions={button('ลงผลคัด QC', f => ({ op: 'qc', loadId: l.id, at: atField(f), ...readQc(f), note: t(f, 'note') }), <><p>{name(info(l.sourceId))} · รอคัด {qty(pending(l.id, l.pieces))} แผ่น</p><TimeInput /><QcFields /><Field name="note" label="หมายเหตุ/อาการรอง" /></>, 'qc')}>
+      <Section title="คิวรอคัดข้อมูลเดิม"><div className="pressing-cards">{loads.filter(l => (qa||(!data.qcCandidates?.some(c=>c.loads.some(x=>x.id===l.id))&&!state.qcDocuments?.some(d=>d.loads.some(x=>x.id===l.id)))) && l.round.unloadedAt && pending(l.id, l.pieces) > 0 && (!kiln || l.round.kilnId === kiln) && matches(l.sourceId)).map(l => <Card key={l.id} title={`รอบ #${l.round.id} · รายการ #${l.id}`} actions={button('ลงผลคัด QC', f => ({ op: 'qc', loadId: l.id, at: atField(f), ...readQc(f), note: t(f, 'note') }), <><p>{name(info(l.sourceId))} · รอคัด {qty(pending(l.id, l.pieces))} แผ่น</p><TimeInput /><QcFields /><Field name="note" label="หมายเหตุ/อาการรอง" /></>, 'qc')}>
         <p>{name(info(l.sourceId))}</p><Facts values={{ 'เข้าเผาจริง': qty(l.pieces), 'รอคัด': qty(pending(l.id, l.pieces)) }} />
       </Card>)}</div><p>ผลแต่ละกลุ่มไม่ซ้ำแผ่นกัน คัดไม่ครบให้คงยอดที่เหลือเป็นรอคัด</p></Section>
       <Section title="ผลคัดและปลายทาง"><div className="pressing-cards">{state.qcs.filter(q => matches(loads.find(l => l.id === q.loadId)!.sourceId)).slice().reverse().map(q => {
         const s = loadItem(q.loadId);
-        return <Card key={q.id} title={`QC #${q.id} · ${s.reference}`} actions={button('จัดสรรออเดอร์/รับสต็อก', f => ({ op: 'allocate', qcId: q.id, grade: t(f, 'grade'), destination: t(f, 'destination'), pieces: n(f, 'pieces'), at: atField(f) }), <><Choice name="grade" label="เกรด" options={grades.map(g => ({ value: g, label: g }))} />
+        return <Card key={q.id} title={`QC #${q.id} · ${s.reference}`} actions={button('จัดสรรออเดอร์/รับสต็อก', f => ({ op: 'allocate', qcId: q.id, grade: t(f, 'grade'), destination: t(f, 'destination'), pieces: n(f, 'pieces'), at: atField(f) }), <><Choice name="grade" label="เกรด" options={grades.filter(g=>g==='A+'||q.counts[g]>0).map(g => ({ value: g, label: g }))} />
           <Choice name="destination" label="ปลายทาง" options={[{ value: 'order', label: 'กันให้ออเดอร์ต้นทาง' }, { value: 'stock', label: 'ยืนยันรับสต็อกแยกเกรด' }]} /><NumberInput name="pieces" label="จำนวนที่ยืนยัน" min={1} value={1} /><TimeInput />
           <p>ออเดอร์นี้รับ: {s.accepted.join(', ') || 'ยังไม่กำหนด'} · สต็อกรับ: {state.stockGrades.join(', ') || 'ยังไม่กำหนด'}</p></>, can('allocate') ? 'allocate' : 'stock')}>
           <p>{name(s)} · {dateTime(q.at)}</p><Facts values={Object.fromEntries(Object.entries(outcomeNames).map(([k, label]) => [label, qty(q.counts[k as keyof typeof q.counts])]))} />

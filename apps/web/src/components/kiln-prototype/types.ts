@@ -1,9 +1,11 @@
 import type { Model, Item, Command, Qc } from '../../../../api/src/kiln-prototype/model';
+import type {QcCandidate,QcReport,QcWorker} from '../../../../api/src/qc-documents/types';
 export type { Model, Item, Command, Qc };
 export const grades = ['A+', 'A-', 'B'] as const;
 export const outcomeNames = { 'A+': 'A+', 'A-': 'A-', B: 'B', waste: 'เสีย', underfired: 'ไม่สุก', touchup: 'แต้ม' };
 export type Source = Item & { sourceId: string; available: number; sourceReady: number; sourceUsed: number; code: string };
 export interface Data {
+  qcWorkers?:QcWorker[];qcCandidates?:QcCandidate[];qcReports?:Record<number,QcReport>;
   catalogVersion?:string;
   revision: number; state: Model; sources: Source[]; copiedItems: Item[];
   summary: { planned: number; reserved: number; throughput: number; freshFired: number; waitingQc: number; repairWaiting: number; waste: number; orderReady: number; stock: number };

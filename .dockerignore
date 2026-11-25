@@ -9,6 +9,7 @@
 data
 .tools
 .qa
+.superpowers
 docs/screenshots
 **/*.xls
 **/*.xlsx

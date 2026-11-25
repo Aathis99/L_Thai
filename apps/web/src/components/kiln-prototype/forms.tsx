@@ -63,7 +63,7 @@ export function DefectFields({ prefix = '', initial = [] }: { prefix?: string; i
   </fieldset>;
 }
 export function QcFields({ initial, prefix = '' }: { initial?: Qc; prefix?: string }) {
-  return <><div className="pressing-cards">{Object.entries(outcomeNames).map(([key, label]) => <NumberInput key={key} name={prefix + key} label={label + ' (แผ่น)'} value={initial?.counts[key as keyof Qc['counts']] ?? 0} />)}</div>
+  return <><div className="pressing-cards">{Object.entries(outcomeNames).filter(([key])=>!['A-','B'].includes(key)||(initial?.counts[key as keyof Qc['counts']]??0)>0).map(([key, label]) => <NumberInput key={key} name={prefix + key} label={label + (['A-','B'].includes(key)?' (ข้อมูลเดิม)':'') + ' (แผ่น)'} value={initial?.counts[key as keyof Qc['counts']] ?? 0} />)}</div>
     <DefectFields prefix={prefix} initial={initial?.defects} /></>;
 }
 export function readQc(f: FormData, prefix = '') {
@@ -76,6 +76,6 @@ export function readQc(f: FormData, prefix = '') {
 }
 export function PolicyFields({ source, data,qa=true }: { source: Source; data: Data;qa?:boolean }) {
   return <><p>{qa?'กำหนดให้ชัดตามงานทดลองนี้ ไม่ใช่นโยบายเกรดของโรงงานโดยอัตโนมัติ':'ยืนยันเกรดที่ออเดอร์นี้ยอมรับ และเกรดที่โรงงานรับเข้าสต็อก การเปลี่ยนเกรดสต็อกใช้ร่วมกันทุกงาน'}</p>
-    <fieldset><legend>ออเดอร์นี้ยอมรับเกรด</legend>{grades.map(g => <Check key={g} name={'accept_' + g} label={g} defaultChecked={source.accepted.includes(g)} />)}</fieldset>
-    <fieldset><legend>เกรดที่ยืนยันรับสต็อกได้ในแบบจำลอง</legend>{grades.map(g => <Check key={g} name={'stock_' + g} label={g} defaultChecked={data.state.stockGrades.includes(g)} />)}</fieldset></>;
+    <fieldset><legend>ออเดอร์นี้ยอมรับเกรด</legend>{grades.filter(g=>qa||g==='A+').map(g => <Check key={g} name={'accept_' + g} label={g} defaultChecked={source.accepted.includes(g)} />)}</fieldset>
+    <fieldset><legend>เกรดที่ยืนยันรับสต็อกได้</legend>{grades.filter(g=>qa||g==='A+').map(g => <Check key={g} name={'stock_' + g} label={g} defaultChecked={data.state.stockGrades.includes(g)} />)}</fieldset></>;
 }
