@@ -48,7 +48,7 @@ export default function KilnPrototype({ api, user, initialTab = 'ภาพรว
   const timeAction = (op: string, roundId: number, label: string) => button(label, f => ({ op, roundId, at: fireAtField(f) }), <FireTimeInput />);
   return <div className="kiln-prototype">
     <Section title={qa?'งานเตา · แบบจำลอง QA':'งานเตา · แผนและการผลิต'} action={<button className="button secondary" onClick={() => void refresh().then(() => setError('')).catch(e => setError(e.message))}>โหลดล่าสุด</button>}>
-      {qa?<p className="status-banner">พื้นที่ทดลองแยกจากระบบหลัก · ยอดทั้งหมดในหน้านี้เป็นยอดจำลอง ไม่ตัดสต็อกใช้งานจริง</p>:<p>ยืนยันเตรียมลงเบอร์เพื่อกันของจริง ผลคัดและยอดรับสต็อกเชื่อมกับส่วนงานเดิม</p>}
+      {qa?<p className="status-banner">พื้นที่ทดลองแยกจากระบบหลัก · ยอดทั้งหมดในหน้านี้เป็นยอดจำลอง ไม่ตัดสต็อกใช้งานจริง</p>:<p>ยืนยันเตรียมลงเบอร์เพื่อกันของจริง ส่งต่อผลคัดจากใบ QC ไปจัดสรรและรับสต็อก</p>}
       <p>{qa?'ทดลองขั้นตอนตั้งแต่แผนจนถึง QC และงานซ่อม ข้อมูลเก็บร่วมกันใน QA ให้ผู้มีสิทธิ์ช่วยกันทำต่อได้':'บันทึกงานร่วมกันตั้งแต่แผน เข้าเผา บันทึกไฟ จนถึง QC และงานซ่อม'}</p>
       {message && <p role="status">{message}</p>}{error && <p role="alert" className="error">{error}</p>}
       <div className="pressing-actions">
@@ -131,9 +131,6 @@ export default function KilnPrototype({ api, user, initialTab = 'ภาพรว
       </p>)}
     </Card>)}</div>{!rounds.length && <p>ยังไม่มีรอบเผา ไปภาพรวมเพื่อเริ่มจากเบอร์ที่เตรียมของไว้</p>}</Section>}
     {tab === 'QC' && <>
-      <Section title="คิวรอคัดข้อมูลเดิม"><div className="pressing-cards">{loads.filter(l => (qa||(!data.qcCandidates?.some(c=>c.loads.some(x=>x.id===l.id))&&!state.qcDocuments?.some(d=>d.loads.some(x=>x.id===l.id)))) && l.round.unloadedAt && pending(l.id, l.pieces) > 0 && (!kiln || l.round.kilnId === kiln) && matches(l.sourceId)).map(l => <Card key={l.id} title={`รอบ #${l.round.id} · รายการ #${l.id}`} actions={button('ลงผลคัด QC', f => ({ op: 'qc', loadId: l.id, at: atField(f), ...readQc(f), note: t(f, 'note') }), <><p>{name(info(l.sourceId))} · รอคัด {qty(pending(l.id, l.pieces))} แผ่น</p><TimeInput /><QcFields /><Field name="note" label="หมายเหตุ/อาการรอง" /></>, 'qc')}>
-        <p>{name(info(l.sourceId))}</p><Facts values={{ 'เข้าเผาจริง': qty(l.pieces), 'รอคัด': qty(pending(l.id, l.pieces)) }} />
-      </Card>)}</div><p>ผลแต่ละกลุ่มไม่ซ้ำแผ่นกัน คัดไม่ครบให้คงยอดที่เหลือเป็นรอคัด</p></Section>
       <Section title="ผลคัดและปลายทาง"><div className="pressing-cards">{state.qcs.filter(q => matches(loads.find(l => l.id === q.loadId)!.sourceId)).slice().reverse().map(q => {
         const s = loadItem(q.loadId);
         return <Card key={q.id} title={`QC #${q.id} · ${s.reference}`} actions={button('จัดสรรออเดอร์/รับสต็อก', f => ({ op: 'allocate', qcId: q.id, grade: t(f, 'grade'), destination: t(f, 'destination'), pieces: n(f, 'pieces'), at: atField(f) }), <><Choice name="grade" label="เกรด" options={grades.filter(g=>g==='A+'||q.counts[g]>0).map(g => ({ value: g, label: g }))} />

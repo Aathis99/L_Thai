@@ -63,6 +63,11 @@ const writes = {
 
 export async function handleFinishingRoute(req: Request, res: Response, access: PressingAccess) {
   const resource = req.path.slice('/finishing/'.length);
+  const retired=['rounds','loads','finish','load-correction','qc','qc-correction','qc-void','allocations','allocation-void','stock-void'];
+  if(retired.includes(resource)||(resource==='stock'&&req.method!=='GET')){
+    access.require('finishing.read');
+    fail('ยกเลิกงานเตาและ QC รูปแบบเก่าแล้ว กรุณาใช้งานเตาและใบ QC รูปแบบใหม่',410);
+  }
   if (req.method === 'GET' && Object.hasOwn(reads, resource)) {
     access.require('finishing.read');
     res.json({ items: await reads[resource as keyof typeof reads](access.db) });

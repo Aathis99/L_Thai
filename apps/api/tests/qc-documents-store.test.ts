@@ -72,6 +72,10 @@ test('HTTP permissions protect confirmation, corrections, worker privacy, and di
  const cookie=login.headers.get('set-cookie')!.split(';')[0],post=async(command:any)=>fetch(base+'/kiln/action',{method:'POST',headers:{cookie,'Content-Type':'application/json'},body:JSON.stringify(await f.body(command))});
  const bypass=await post({op:'qc',loadId:f.loadId,at:at('13:00'),counts:{'A+':1},defects:[]});assert.equal(bypass.status,409);
  assert.equal((await post({op:'qc-document-open',loadId:f.loadId})).status,201);
+ for(const resource of ['rounds','qc','loads','finish','qc-correction','allocations']){
+  assert.equal((await fetch(base+'/finishing/'+resource,{headers:{cookie}})).status,410);
+  assert.equal((await fetch(base+'/finishing/'+resource,{method:'POST',headers:{cookie,'Content-Type':'application/json'},body:'{}'})).status,410);
+ }
  assert.equal((await post({op:'policy',sourceId:(await readWorkflow(f.pool)).state.items[0].id,accepted:null,stockGrades:[]})).status,400);
  await f.pool.query('UPDATE roles SET permissions=$1 WHERE id=1',[JSON.stringify(['finishing.read'])]);
  assert.equal((await post({op:'qc-draft-save',documentId:1,workerIds:[],lines:[]})).status,403);

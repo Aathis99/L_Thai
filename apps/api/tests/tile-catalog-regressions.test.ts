@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {test,type TestContext} from 'node:test';
 import {randomUUID} from 'node:crypto';
-import {migrate} from '../src/database.js';
+import {migrate,transaction} from '../src/database.js';
+import {recordQc,listQc} from '../src/finishing/qc.js';
 import {tileFixture,productInput,bodyInput,profileInput} from './tile-test-helpers.js';
 
 async function prepared(t:TestContext,destination='color'){
@@ -65,7 +66,7 @@ test('legacy stock and historical sorting lock material identity while productio
  assert.equal((await f.call('/pressing/types/'+sorted,'PUT',{...tile,clay:'ขาว',clay_color:null,width:3})).status,409);
 });
 
-test('glazing and legacy QC show the immutable SKU identity of shared preforms',async t=>{
+test('glazing and historical QC retain the immutable SKU identity of shared preforms after legacy routes retire',async t=>{
  const f=await prepared(t);
  const second=(await f.call('/catalog/products','POST',{...productInput,product_code:'QA-TWO',name:'ลายสอง',body_id:f.body})).body.id;
  const ids=[];
@@ -77,11 +78,15 @@ test('glazing and legacy QC show the immutable SKU identity of shared preforms',
   const batch=await f.call('/finishing/glazing','POST',{request_id:randomUUID(),issue_id:issue.body.id,worked_on:f.day,worker_ids:[f.worker],pieces:100,good_pieces:100,pressing_waste:0,glazing_waste:0});assert.equal(batch.status,201);
   const round=(await f.pool.query("INSERT INTO firing_rounds(kiln,started_on,temperature,recorded_by,finished_on) VALUES('QA',$1,800,1,$1) RETURNING id",[f.day])).rows[0].id;
   const load=(await f.pool.query("INSERT INTO firing_loads(round_id,issue_id,batch_id,type_id,order_id,color_id,color_name,clay,pieces_per_sqm,pieces) VALUES($1,$2,$3,$4,$5,$6,'QA','ขาว',90,100) RETURNING id",[round,issue.body.id,batch.body.id,f.profile,order.body.id,f.color])).rows[0].id;
-  const qc=await f.call('/finishing/qc','POST',{request_id:randomUUID(),round_id:round,sorted_on:f.day,good_pieces:100,waste_pieces:0,lines:[{load_id:load,pieces:100}]});assert.equal(qc.status,201);
-  ids.push({product:product_id,order:order.body.id,issue:issue.body.id,batch:batch.body.id,qc:qc.body.id});
+  const payload={request_id:randomUUID(),round_id:round,sorted_on:f.day,good_pieces:100,waste_pieces:0,lines:[{load_id:load,pieces:100}]};
+  assert.equal((await f.call('/finishing/qc','POST',payload)).status,410);
+  // Historical fixtures use the storage layer; the retired HTTP route cannot create new results.
+  const qc=await transaction(f.pool,db=>recordQc(db,payload,{id:1,username:'tile-admin'}));
+  ids.push({product:product_id,order:order.body.id,issue:issue.body.id,batch:batch.body.id,qc});
  }
  await f.call('/catalog/products/'+second,'PUT',{...productInput,product_code:'QA-TWO',name:'ชื่อใหม่ในทะเบียน',body_id:f.body});
- const issues=(await f.call('/finishing/issues')).body.items,batches=(await f.call('/finishing/glazing')).body.items,qcs=(await f.call('/finishing/qc')).body.items;
+ const issues=(await f.call('/finishing/issues')).body.items,batches=(await f.call('/finishing/glazing')).body.items,qcs=await listQc(f.pool);
+ assert.equal((await f.call('/finishing/qc')).status,410);
  for(const id of ids){assert.equal(issues.find((x:any)=>x.id===id.issue).product_id,id.product);assert.equal(batches.find((x:any)=>x.id===id.batch).product_id,id.product);assert.equal(qcs.find((x:any)=>x.id===id.qc).product_id,id.product);}
  assert.equal(batches.find((x:any)=>x.id===ids[1].batch).product_name,'ลายสอง');
 });

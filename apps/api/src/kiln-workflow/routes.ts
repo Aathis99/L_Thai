@@ -12,6 +12,7 @@ export async function handleKilnWorkflow(req:Request,res:Response,access:Session
  if(req.method==='GET'&&req.path==='/kiln/state'){res.json(await readWorkflow(access.db));return true;}
  if(req.method==='POST'&&req.path==='/kiln/action'){
   const command=req.body?.command;
+  if(command?.op==='qc'){access.require('finishing.qc');fail('ยกเลิกฟอร์ม QC รายครั้งเดิมแล้ว กรุณาบันทึกผ่านใบ QC',409);}
   const permission=command?.op==='allocate'?(command.destination==='stock'?'finishing.stock':'finishing.allocate'):permissions[command?.op];
   if(!permission)fail('ไม่รองรับการทำงานนี้ในระบบใช้งานจริง');
   const result=await access.mutate(permission,async(db,actor)=>{

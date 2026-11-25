@@ -211,8 +211,10 @@ test('finished production routes require read and operation permissions independ
     const { id: role_id } = await role.json() as { id: number };
     assert.equal((await call('/users', { username, name: username, role_id, password }, admin)).status, 201);
     const cookie = await login(username);
-    assert.equal((await call('/finishing/rounds', undefined, cookie)).status, expectedRead);
-    assert.equal((await call('/finishing/rounds', round, cookie)).status, 403);
+    assert.equal((await call('/finishing/sources', undefined, cookie)).status, expectedRead);
+    assert.equal((await call('/finishing/ranges', {clay:'แดง',minimum:1000,maximum:1000}, cookie)).status, 403);
+    assert.equal((await call('/finishing/rounds', undefined, cookie)).status, expectedRead===200?410:403);
+    assert.equal((await call('/finishing/rounds', round, cookie)).status, expectedRead===200?410:403);
   }
   const saved = await call('/finishing/rounds', round, admin);
   assert.equal(saved.status, 410);
