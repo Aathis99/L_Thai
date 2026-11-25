@@ -3,7 +3,7 @@ import {calendarDate,integer} from '../pressing/catalog.js';
 import {loadById,rootItem,transition,type Model,type Command} from '../kiln-prototype/model.js';
 import type {DocumentCounts,QcDocument,QcDocumentContext,QcDocumentEntry,QcDocumentLine,QcCandidate,QcReport} from './types.js';
 
-export const symptomNames=['เศษ','มุมเข้า','มุมออก','ฉีกข้าง','อลูมิน่า','งอ','เปิด','แอ่น','หัก','ฉีก','แร่','เศษไม้','รู','กระจก','ดิน','เหล็ก','ร้าวหลัง','ฟอง','เศษชุบ','หยด','ซิลิกอน','หด','ไม่สุก'];
+export {symptomNames} from './types.js';
 const empty=():DocumentCounts=>({'A+':0,waste:0,underfired:0,touchup:0});
 const sum=(values:number[])=>values.reduce((a,b)=>a+b,0);
 const total=(counts:DocumentCounts)=>sum(Object.values(counts));
@@ -48,7 +48,7 @@ function parseLines(value:unknown,doc:QcDocument):QcDocumentLine[]{
   if(new Set(defects.map((d:{name:string})=>d.name)).size!==defects.length)fail('ชื่ออาการเสียซ้ำ');
   const waste=sum(defects.map((d:{pieces:number})=>d.pieces));
   if(values.waste!==undefined&&values.waste!==waste)fail('ยอดเสียต้องตรงกับอาการเสียรวม');
-  return {loadId,counts:{'A+':integer(values['A+']??0,'A+'),waste,underfired:integer(values.underfired??0,'ไม่สุก'),touchup:integer(values.touchup??0,'แต้ม')},defects};
+  return {loadId,counts:{'A+':integer(values['A+']??0,'A+',0),waste,underfired:integer(values.underfired??0,'ไม่สุก',0),touchup:integer(values.touchup??0,'แต้ม',0)},defects};
  });
 }
 function parseEntry(c:Command,doc:QcDocument,ctx:QcDocumentContext,previous?:QcDocumentEntry):QcDocumentEntry{

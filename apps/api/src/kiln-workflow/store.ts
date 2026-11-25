@@ -6,6 +6,9 @@ import {listSources,setRange} from '../finishing/firing.js';
 import {transition,sources,summarize,rootItem,loadById,type Item,type Model,type Command} from '../kiln-prototype/model.js';
 import {differences} from '../kiln-prototype/store.js';
 import {assertMeshSources,meshState} from '../tile-catalog/mesh.js';
+import {documentCandidates,documentReport,historicalQcGroup,synchronizeDocuments,transitionDocument} from '../qc-documents/model.js';
+import {formatEmployeeName} from '../employee-names.js';
+import type {QcWorker} from '../qc-documents/types.js';
 
 type Recorder={id:number;username:string};
 type LiveItem=Item&{orderId:number;typeId:number;colorId:number|null};
@@ -13,6 +16,10 @@ type Debit={reservation_id:number;source_id:string;issue_id:number;batch_id:numb
 const key=(v:{issue_id:number;batch_id:number|null})=>`${v.issue_id}:${v.batch_id??'breeze'}`;
 const day=(at:string)=>new Date(Date.parse(at)+7*3600000).toISOString().slice(0,10);
 const catalogVersion=(items:Item[])=>createHash('sha256').update(JSON.stringify(items)).digest('hex');
+async function qcWorkers(db:Db):Promise<QcWorker[]>{
+ const rows=await all(db,'SELECT id,code,prefix,first_name,last_name,active FROM employees WHERE archived=0 ORDER BY code');
+ return rows.map(row=>({id:row.id,code:row.code,name:formatEmployeeName(row),active:!!row.active}));
+}
 
 async function catalog(db:Db):Promise<LiveItem[]>{
  const orders=await all(db,`SELECT o.*,t.width,t.length,t.name,t.clay AS type_clay,t.pieces_per_sqm AS type_rate,
@@ -29,7 +36,7 @@ async function catalog(db:Db):Promise<LiveItem[]>{
   const batches=ready.filter(v=>v.order_id===o.id);
   return {id:'order:'+o.id,orderKey:'order:'+o.id,orderId:o.id,typeId:o.type_id,colorId:o.color_id,
    reference:o.customer_reference||`สั่งเก็บสต็อก #${o.id}`,name:o.product_snapshot?`${o.product_snapshot.product_code} · ${o.product_snapshot.name}${o.requires_mesh?' · ติดตาข่าย':''}`:`${o.width??''}×${o.length??''} ${o.name??''}`.trim(),
-   productId:o.product_id,productName:o.product_snapshot?.name??null,productCode:o.product_snapshot?.product_code??null,requiresMesh:o.requires_mesh,clayColor:o.production_clay_color,
+   productId:o.product_id,productName:o.product_snapshot?.name??null,productCode:o.product_snapshot?.product_code??null,requiresMesh:o.requires_mesh,clayColor:o.production_clay_color,clayTypeId:o.clay_type_id,clayColorId:o.clay_color_id,
    clay:o.production_clay??o.type_clay,color:o.color_name??'',purpose:o.purpose,
    target:Math.max(0,(o.customer_pieces??o.target_pieces)-o.legacy_ready),rate:Number(o.pieces_per_sqm??o.type_rate??0),
    ready:batches.reduce((n,b)=>n+Number(b.waiting_pieces),0)+(held.find(h=>h.order_id===o.id)?.pieces??0),
@@ -48,6 +55,7 @@ async function readLocked(db:Db){
  const completedWorkflow=mesh.entries.filter(e=>!e.voided_at&&meshOrders.has(e.order_id)).flatMap(e=>e.lines).filter(l=>l.key.startsWith('workflow:')).reduce((n,l)=>n+l.pieces,0);
  summary.orderReady=Math.max(0,summary.orderReady-meshAllocated.pieces)+completedWorkflow;
  return {revision:row.revision as number,catalogVersion:catalogVersion(state.items),state,summary,sources:sources(state),copiedItems:[] as Item[],
+  qcWorkers:await qcWorkers(db),qcCandidates:documentCandidates(state),qcReports:Object.fromEntries((state.qcDocuments??[]).map(doc=>[doc.id,documentReport(state,doc)])),
   history:events.map(({before_state,after_state,...event})=>({...event,changes:differences(before_state,after_state)}))};
 }
 export function readWorkflow(db:Db):ReturnType<typeof readLocked>{
@@ -119,7 +127,18 @@ export async function saveWorkflow(db:Db,body:any,actor:Recorder){
   if(legacy.some(r=>{const id=/^(?:เตา\s*)?(\d+)(?:\/\d+)?$/.exec(r.kiln.trim())?.[1];return !id||Number(id)===c.kilnId;}))
    fail('ยังมีรอบเผางานเดิมใช้เตานี้อยู่ กรุณาตรวจงานเดิมก่อน',409);
  }
- let state=transition(before,c);
+ if(c.op==='qc'){
+  if(!historicalQcGroup(before,c.loadId))fail('กรุณาบันทึกผลคัดผ่านใบ QC ของงานนี้',409);
+  if((c.counts?.['A-']??0)!==0||(c.counts?.B??0)!==0)fail('ยกเลิก A- และ B สำหรับผลคัดใหม่แล้ว');
+ }
+ if(c.op==='policy'&&[...(c.accepted??[]),...(c.stockGrades??[])].some(g=>g!=='A+'))fail('นโยบายใหม่เลือกได้เฉพาะเกรด A+');
+ const owned=(before.qcDocuments??[]).flatMap(d=>d.entries.flatMap(e=>e.lines.map(l=>l.qcId))).filter(id=>id!==undefined);
+ const changesDocumentLoad=(before.qcDocuments??[]).some(d=>d.loads.some(l=>l.id===c.loadId));
+ if(c.op==='correct'&&(changesDocumentLoad||(c.qcs??[]).some((q:any)=>owned.includes(q.id)))){
+  text(c.reason,'เหตุผลแก้ไข',true,1000);
+  if((c.qcs??[]).some((q:any)=>owned.includes(q.id)&&((q.counts?.['A-']??0)!==0||(q.counts?.B??0)!==0)))fail('ผลคัดในใบ QC ใช้ A- หรือ B ไม่ได้');
+ }
+ let state=c.op.startsWith('qc-')?transitionDocument(before,c,{now:new Date().toISOString(),actor:actor.username,workers:await qcWorkers(db)}):transition(before,c);
  const current=state.items.find(i=>i.id===c.sourceId) as LiveItem|undefined;
  if(c.op==='settings'){
   if(!current)fail('ไม่พบต้นทางจริง');
@@ -131,6 +150,10 @@ export async function saveWorkflow(db:Db,body:any,actor:Recorder){
  // Re-read settings shared by clay, color and tile type before final validation.
  state.items=await catalog(db);
  state=transition(state,{op:'correct'});
+ state=synchronizeDocuments(before,state);
+ if(c.op==='correct')for(const doc of state.qcDocuments??[]){
+  if(doc.version!==before.qcDocuments?.find(d=>d.id===doc.id)?.version)doc.corrections.push({at:new Date().toISOString(),actor:actor.username,reason:text(c.reason,'เหตุผลแก้ไข',true,1000)});
+ }
  const used=new Set(state.plans.map(p=>p.sourceId));if(current)used.add(current.id);
  for(const item of state.items as LiveItem[])if(used.has(item.id))await db.query('INSERT INTO kiln_workflow_sources VALUES($1,$2,$3) ON CONFLICT(source_id) DO NOTHING',[item.id,item.orderId,item.typeId]);
  const input=await debitSources(db,state);

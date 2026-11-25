@@ -1,4 +1,5 @@
 export type DocumentOutcome='A+'|'waste'|'underfired'|'touchup';
+export const symptomNames=['เศษ','มุมเข้า','มุมออก','ฉีกข้าง','อลูมิน่า','งอ','เปิด','แอ่น','หัก','ฉีก','แร่','เศษไม้','รู','กระจก','ดิน','เหล็ก','ร้าวหลัง','ฟอง','เศษชุบ','หยด','ซิลิกอน','หด','ไม่สุก'];
 export type DocumentCounts=Record<DocumentOutcome,number>;
 export interface QcWorker {id:number;code:string;name:string;active:boolean}
 export interface QcDocumentLoad {

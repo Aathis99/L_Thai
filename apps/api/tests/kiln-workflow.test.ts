@@ -33,7 +33,14 @@ async function fixture(t:TestContext,destination='color',purpose='customer'){
  const issue=await recordIssue(pool,{request_id:'issue',order_id:order,type_id:type,destination,confirmed_ready:true,lines:[{source_id:source.id,pieces:120,allocation:purpose==='stock'?'general':'order'}]},actor);
  const batch=destination==='color'?await recordGlazing(pool,{request_id:'glaze',issue_id:issue,worked_on:day,worker_ids:[employee.id],pieces:120,pressing_waste:0,glazing_waste:0,good_pieces:120},actor):null;
  let revision=0;
- const save=async(command:any)=>{const current=await readWorkflow(pool);const result=await transaction(pool,db=>saveWorkflow(db,{request_id:randomUUID(),revision,catalog_version:current.catalogVersion,command},actor));revision=result.revision;return result;};
+ const save=async(command:any):Promise<Awaited<ReturnType<typeof readWorkflow>>>=>{
+  if(command.op==='qc'){
+   let d=await save({op:'qc-document-open',loadId:command.loadId});const doc=d.state.qcDocuments!.find(x=>x.loads.some(l=>l.id===command.loadId))!;
+   d=await save({op:'qc-draft-save',documentId:doc.id,at:command.at,workerIds:[employee.id],note:command.note??'',lines:[{loadId:command.loadId,counts:command.counts,defects:command.defects??[]}]});
+   return save({op:'qc-draft-confirm',documentId:doc.id,entryId:d.state.qcDocuments!.find(x=>x.id===doc.id)!.entries.at(-1)!.id});
+  }
+  const current=await readWorkflow(pool);const result=await transaction(pool,db=>saveWorkflow(db,{request_id:randomUUID(),revision,catalog_version:current.catalogVersion,command:{...command,...(command.qcs?.length?{reason:'ทดสอบแก้ยอด'}:{})}},actor));revision=result.revision;return result;
+ };
  const sourceId='order:'+order;
  const plan=(pieces:number)=>save({op:'plan',sourceId,kilnId:2,rail:1,date:day,unit:'pieces',input:pieces,pieces,temperature:1150});
  const settings=()=>save({op:'settings',sourceId,clayRange:[1050,1250],...(destination==='color'?{colorRange:[1100,1200]}:{}),shapeRange:[1100,1200]});
@@ -71,14 +78,13 @@ test('breeze holds prevent returning already reserved real pieces',async t=>{
  assert.equal((await listSources(f.pool))[0].waiting_pieces,20);
 });
 test('graded allocations update real order balances and finished stock; correction and retry are atomic',async t=>{
- const f=await fixture(t);await f.settings();await f.save({op:'policy',sourceId:f.sourceId,accepted:['A+'],stockGrades:['A+','A-']});
+ const f=await fixture(t);await f.settings();await f.save({op:'policy',sourceId:f.sourceId,accepted:['A+'],stockGrades:['A+']});
  let d=await f.plan(120);await f.save({op:'reserve',planId:d.state.plans[0].id,pieces:120});const load=await f.fire();
- d=await f.save({op:'qc',loadId:load,at:at('12:40'),counts:{'A+':110,'A-':5,waste:2,underfired:2,touchup:1},defects:[{name:'ร้าว',pieces:1},{name:'หัก',pieces:1}]});
+ d=await f.save({op:'qc',loadId:load,at:at('12:40'),counts:{'A+':115,waste:2,underfired:2,touchup:1},defects:[{name:'ร้าว',pieces:1},{name:'หัก',pieces:1}]});
  const qc=d.state.qcs[0].id;await f.save({op:'allocate',qcId:qc,grade:'A+',pieces:100,destination:'order',at:at('12:45')});
  assert.deepEqual(await one(f.pool,'SELECT ready_pieces,missing_pieces FROM finishing_order_balances WHERE id=$1',[f.order]),{ready_pieces:100,missing_pieces:0});
- d=await f.save({op:'allocate',qcId:qc,grade:'A+',pieces:10,destination:'stock',at:at('12:45')});
- await f.save({op:'allocate',qcId:qc,grade:'A-',pieces:5,destination:'stock',at:at('12:45')});
- const receipts=await listReceipts(f.pool);assert.deepEqual(receipts.map(r=>[r.grade,r.pieces]).sort(),[['A+',10],['A-',5]]);
+ d=await f.save({op:'allocate',qcId:qc,grade:'A+',pieces:15,destination:'stock',at:at('12:45')});
+ const receipts=await listReceipts(f.pool);assert.deepEqual(receipts.map(r=>[r.grade,r.pieces]),[['A+',15]]);
  await f.save({op:'repair-ready',qcId:qc,kind:'underfired',pieces:1});
  d=await f.save({op:'plan',sourceId:`repair:${qc}:underfired`,kilnId:2,rail:2,date:day,unit:'pieces',input:1,pieces:1,temperature:1150});
  await f.save({op:'reserve',planId:d.state.plans.at(-1)!.id,pieces:1});await f.save({op:'rail-ready',kilnId:2,rail:2});
@@ -88,7 +94,7 @@ test('graded allocations update real order balances and finished stock; correcti
  const stockAllocation=d.state.allocations.find(a=>a.destination==='stock'&&a.grade==='A+')!;
  const snapshot=await readWorkflow(f.pool);const body={request_id:randomUUID(),revision:snapshot.revision,catalog_version:snapshot.catalogVersion,command:{op:'correct',allocations:[{id:stockAllocation.id,pieces:9}]}};
  await transaction(f.pool,db=>saveWorkflow(db,body,f.actor));await transaction(f.pool,db=>saveWorkflow(db,body,f.actor));
- assert.equal((await one(f.pool,"SELECT sum(pieces) n FROM kiln_workflow_allocations WHERE destination='stock'")).n,'14');
+ assert.equal((await one(f.pool,"SELECT sum(pieces) n FROM kiln_workflow_allocations WHERE destination='stock'")).n,'9');
  await assert.rejects(f.save({op:'correct',loadId:load,pieces:100}),/มีผู้อื่น|ฉบับ|เกิน/);
 });
 test('stock production follows the real glazing path without invented customer demand',async t=>{

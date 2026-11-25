@@ -1,0 +1,95 @@
+import assert from 'node:assert/strict';
+import {test,type TestContext} from 'node:test';
+import {randomUUID} from 'node:crypto';
+import pg from 'pg';
+import {migrate,one,transaction} from '../src/database.js';
+import {createOrder,saveType} from '../src/pressing/catalog.js';
+import {recordEntry,recordIssue} from '../src/pressing/stock.js';
+import {readWorkflow,saveWorkflow} from '../src/kiln-workflow/store.js';
+import {documentReport} from '../src/qc-documents/model.js';
+import {createApplication} from '../src/app.js';
+import {hashPassword} from '../src/auth.js';
+import {transition} from '../src/kiln-prototype/model.js';
+import {listReceipts} from '../src/finishing/qc.js';
+const day='2026-11-25',at=(time:string)=>`${day}T${time}:00+07:00`;
+async function fixture(t:TestContext){
+ assert.ok(process.env.DATABASE_URL);const admin=new pg.Pool({connectionString:process.env.DATABASE_URL});
+ assert.equal((await one(admin,'SELECT current_database() db')).db,'lthai_qc_documents_qa');
+ const schema='qc_documents_test_'+randomUUID().replaceAll('-','');await admin.query('CREATE SCHEMA '+schema);
+ const pool=new pg.Pool({connectionString:process.env.DATABASE_URL,options:'-c search_path='+schema});
+ t.after(async()=>{await pool.end();await admin.query('DROP SCHEMA '+schema+' CASCADE');await admin.end();});await migrate(pool);
+ const actor=await one(pool,"INSERT INTO users(username,name,password_hash,role_id) VALUES('qcoperator','QC Operator','unused',1) RETURNING id,username");
+ const worker=await one(pool,"INSERT INTO employees(code,first_name,last_name) VALUES('QC1','คนคัด','ทดสอบ') RETURNING id");
+ const type=await saveType(pool,{width:2,length:8,clay:'ขาว',pieces_per_rack:100,rest_days:0,destination:'kiln',pieces_per_sqm:50});
+ const order=await createOrder(pool,{type_id:type,purpose:'stock',customer_reference:'QC-OS-001',target_pieces:100});
+ await recordEntry(pool,{request_id:'press',order_id:order,pressed_on:'2026-11-01',employee_id:worker.id,full_racks:1,loose_pieces:0},actor);
+ const source=await one(pool,'SELECT id FROM pressing_stock_sources');
+ await recordIssue(pool,{request_id:'issue',order_id:order,type_id:type,destination:'kiln',confirmed_ready:true,lines:[{source_id:source.id,pieces:100,allocation:'general'}]},actor);
+ const body=async(command:any)=>{const d=await readWorkflow(pool);return {request_id:randomUUID(),revision:d.revision,catalog_version:d.catalogVersion,command};};
+ const save=async(command:any)=>{const request=await body(command);return transaction(pool,db=>saveWorkflow(db,request,actor));};
+ const sourceId='order:'+order;await save({op:'settings',sourceId,clayRange:[1050,1250],shapeRange:[1100,1200]});await save({op:'policy',sourceId,accepted:['A+'],stockGrades:['A+']});
+ let d=await save({op:'plan',sourceId,kilnId:2,rail:1,date:day,unit:'pieces',input:100,pieces:100,temperature:1150});
+ await save({op:'reserve',planId:d.state.plans[0].id,pieces:100});await save({op:'rail-ready',kilnId:2,rail:1});
+ d=await save({op:'start',kilnId:2,rail:1,temperature:1150,at:at('09:00')});const roundId=d.state.rounds[0].id;
+ for(const [op,time] of [['stop','10:00'],['withdraw','11:00'],['unload','12:00']])d=await save({op,roundId,at:at(time)});
+ const loadId=d.state.rounds[0].loads[0].id;
+ const open=()=>save({op:'qc-document-open',loadId});
+ const draft=(documentId:number,pieces=100)=>save({op:'qc-draft-save',documentId,at:at('13:00'),workerIds:[worker.id],note:'',lines:[{loadId,counts:{'A+':pieces},defects:[]}]});
+ return {pool,actor,worker,loadId,body,save,open,draft};
+}
+test('QA storage confirms once, rejects replay mismatch and stale revision, and snapshots official reports',async t=>{
+ const f=await fixture(t);let d=await f.open();const docId=d.state.qcDocuments![0].id;
+ d=await f.draft(docId,60);assert.equal(d.state.qcs.length,0);assert.equal(d.summary.stock,0);assert.ok((d as any).qcWorkers.some((w:any)=>w.id===f.worker.id));
+ assert.deepEqual(Object.keys((d as any).qcWorkers[0]).sort(),['active','code','id','name']);
+ const confirm=await f.body({op:'qc-draft-confirm',documentId:docId,entryId:d.state.qcDocuments![0].entries[0].id});
+ d=await transaction(f.pool,db=>saveWorkflow(db,confirm,f.actor));assert.equal(d.state.qcs.length,1);
+ const retry=await transaction(f.pool,db=>saveWorkflow(db,confirm,f.actor));assert.equal(retry.replayed,true);assert.equal(retry.state.qcs.length,1);
+ await assert.rejects(transaction(f.pool,db=>saveWorkflow(db,{...confirm,request_id:randomUUID()},f.actor)),/ผู้อื่น|ล่าสุด/);
+ await assert.rejects(transaction(f.pool,db=>saveWorkflow(db,{...confirm,command:{...confirm.command,entryId:999}},f.actor)),/คำขอ/);
+ await assert.rejects(f.save({op:'qc-document-issue',documentId:docId}),/ครบ/);
+ d=await f.draft(docId,40);d=await f.save({op:'qc-draft-confirm',documentId:docId,entryId:d.state.qcDocuments![0].entries.at(-1)!.id});
+ d=await f.save({op:'qc-document-issue',documentId:docId});assert.equal(d.state.qcDocuments![0].reports.length,1);
+ d=await f.save({op:'qc-document-issue',documentId:docId});assert.equal(d.state.qcDocuments![0].reports.length,1);
+});
+test('downstream allocation blocks invalid correction atomically while valid correction retains official history',async t=>{
+ const f=await fixture(t);let d=await f.open();const documentId=d.state.qcDocuments![0].id;
+ d=await f.draft(documentId);d=await f.save({op:'qc-draft-confirm',documentId,entryId:d.state.qcDocuments![0].entries[0].id});
+ d=await f.save({op:'qc-document-issue',documentId});const original=structuredClone(d.state.qcDocuments![0].reports[0]);
+ d=await f.save({op:'allocate',qcId:d.state.qcs[0].id,grade:'A+',destination:'stock',pieces:100,at:at('14:00')});
+ const entry=d.state.qcDocuments![0].entries[0],before=await readWorkflow(f.pool);
+ const correction={op:'qc-document-correct',documentId,entryId:entry.id,reason:'นับใหม่',at:entry.at,workerIds:[f.worker.id],note:'',lines:[{...entry.lines[0],counts:{'A+':90,waste:10},defects:[{name:'หัก',pieces:10}]}]};
+ await assert.rejects(f.save(correction),/เกินผลคัด/);assert.equal((await readWorkflow(f.pool)).revision,before.revision);
+ d=await f.save({...correction,allocations:[{id:d.state.allocations[0].id,pieces:90}]});
+ assert.equal((await one(f.pool,'SELECT sum(pieces)::int n FROM kiln_workflow_allocations')).n,90);
+ assert.deepEqual(d.state.qcDocuments![0].reports[0],original);assert.equal(documentReport(d.state,d.state.qcDocuments![0]).officialCurrent,false);
+ d=await f.save({op:'qc-document-issue',documentId});assert.equal(d.state.qcDocuments![0].reports.at(-1)!.revision,1);
+});
+test('HTTP permissions protect confirmation, corrections, worker privacy, and direct-QC bypass',async t=>{
+ const f=await fixture(t);await f.pool.query('UPDATE users SET password_hash=$1 WHERE id=$2',[await hashPassword('qc-test-password'),f.actor.id]);
+ const {server}=createApplication(f.pool);await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));t.after(async()=>{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));});
+ const base=`http://127.0.0.1:${(server.address() as {port:number}).port}/api`;
+ const login=await fetch(base+'/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:f.actor.username,password:'qc-test-password'})});assert.equal(login.status,200);
+ const cookie=login.headers.get('set-cookie')!.split(';')[0],post=async(command:any)=>fetch(base+'/kiln/action',{method:'POST',headers:{cookie,'Content-Type':'application/json'},body:JSON.stringify(await f.body(command))});
+ const bypass=await post({op:'qc',loadId:f.loadId,at:at('13:00'),counts:{'A+':1},defects:[]});assert.equal(bypass.status,409);
+ assert.equal((await post({op:'qc-document-open',loadId:f.loadId})).status,201);
+ await f.pool.query('UPDATE roles SET permissions=$1 WHERE id=1',[JSON.stringify(['finishing.read'])]);
+ assert.equal((await post({op:'qc-draft-save',documentId:1,workerIds:[],lines:[]})).status,403);
+ const read=await fetch(base+'/kiln/state',{headers:{cookie}});assert.equal(read.status,200);const json:any=await read.json();assert.deepEqual(Object.keys(json.qcWorkers[0]).sort(),['active','code','id','name']);
+});
+
+test('historic A-/B remains usable while new retired-grade results and new documents for old groups are rejected',async t=>{
+ const f=await fixture(t);let d=await readWorkflow(f.pool);
+ const old=transition(d.state,{op:'qc',loadId:f.loadId,at:at('13:00'),counts:{'A-':5,B:2},defects:[]});old.stockGrades=['A+','A-','B'];
+ await f.pool.query('UPDATE kiln_workflow_state SET state=$1 WHERE id=1',[JSON.stringify(old)]);
+ d=await f.save({op:'allocate',qcId:old.qcs[0].id,grade:'B',destination:'stock',pieces:2,at:at('14:00')});
+ assert.equal(d.state.qcs[0].counts['A-'],5);assert.equal(d.state.qcs[0].counts.B,2);assert.ok((await listReceipts(f.pool)).some(r=>r.grade==='B'&&r.pieces===2));
+ await assert.rejects(f.open(),/เดิม|ประวัติ/);
+ await assert.rejects(f.save({op:'qc',loadId:f.loadId,at:at('13:00'),counts:{B:1},defects:[]}),/ยกเลิก/);
+ d=await f.save({op:'qc',loadId:f.loadId,at:at('13:00'),counts:{'A+':20},defects:[]});assert.equal(d.state.qcs.length,2);
+});
+test('source quantity corrections affecting a document require reason and are recorded in document history',async t=>{
+ const f=await fixture(t);let d=await f.open();
+ await assert.rejects(f.save({op:'correct',loadId:f.loadId,pieces:99}),/เหตุผล/);
+ d=await f.save({op:'correct',loadId:f.loadId,pieces:99,reason:'ตรวจยอดเข้าใหม่'});
+ assert.equal(d.qcReports[d.state.qcDocuments![0].id].input,99);assert.equal(d.state.qcDocuments![0].corrections.at(-1)!.reason,'ตรวจยอดเข้าใหม่');
+});
