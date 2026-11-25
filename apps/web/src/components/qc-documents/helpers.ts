@@ -1,5 +1,13 @@
 import type {QcReport,QcDocumentEntry,QcDocumentLoad} from '../../../../api/src/qc-documents/types.ts';
 import {symptomNames} from '../../../../api/src/qc-documents/types.ts';
+import {fireAtField} from '../kiln-prototype/types.ts';
+
+export function qcErrorMessage(message:string){return /เวลา/.test(message)&&/ก่อน|หลัง|สัมพันธ์/.test(message)&&!message.startsWith('เวลาไม่สัมพันธ์กัน')?'เวลาไม่สัมพันธ์กัน: '+message:message;}
+export function readQcAt(form:FormData,unloadedAt:string){
+ const at=fireAtField(form);
+ if(unloadedAt&&Date.parse(at)<Date.parse(unloadedAt))throw Error('เวลาไม่สัมพันธ์กัน: เวลาคัดต้องไม่ก่อนเอาของลง');
+ return at;
+}
 
 export const outcomeLabels={'A+':'A+',waste:'เสีย',underfired:'ไม่สุก',touchup:'แต้ม'};
 export const reportRevisionLabel=(revision?:number)=>revision===undefined?'ร่าง':revision===0?'ฉบับทางการ':`ฉบับแก้ไขครั้งที่ ${revision}`;

@@ -4,23 +4,27 @@ import {symptomNames} from '../../../../api/src/qc-documents/types';
 import type {Command} from '../kiln-prototype/types';
 import {Field} from '../fields';
 import {Modal} from '../pressing/shared';
-import {localQcTime,readEntryForm} from './helpers';
+import {localQcTime,readEntryForm,readQcAt,qcErrorMessage} from './helpers';
+import {FireTimeInput} from '../kiln-prototype/forms';
 
-export default function EntryForm({document:doc,workers,entry,busy,error,onSave,onClose,onReload,refreshed=false}:{document:QcDocument;workers:QcWorker[];entry?:QcDocumentEntry;busy:boolean;error:string;onSave:(command:Command)=>Promise<boolean>;onClose:()=>void;onReload:()=>Promise<void>;refreshed?:boolean}){
+export default function EntryForm({document:doc,unloadedAt,workers,entry,busy,error,onSave,onClose,onReload,refreshed=false}:{document:QcDocument;unloadedAt:string;workers:QcWorker[];entry?:QcDocumentEntry;busy:boolean;error:string;onSave:(command:Command)=>Promise<boolean>;onClose:()=>void;onReload:()=>Promise<void>;refreshed?:boolean}){
  const [localError,setLocalError]=useState(''),[preview,setPreview]=useState('');
  const correcting=entry?.status==='confirmed';
  const loads=correcting?doc.loads.filter(l=>entry.lines.some(x=>x.loadId===l.id)):doc.loads;
  const symptoms=[...symptomNames,...new Set(entry?.lines.flatMap(l=>l.defects.filter(d=>!symptomNames.includes(d.name)).map(d=>d.name))??[])];
  const choices=[...workers.filter(w=>w.active),...(entry?.workers.filter(w=>!workers.some(current=>current.id===w.id&&current.active))??[])];
  return <Modal title={correcting?'แก้ผลคัดที่ยืนยันแล้ว':entry?'แก้ผลคัดร่าง':'เพิ่มผลคัดจากกระดาษ'} busy={busy} guardDismissal onClose={onClose}>
-  <form className="qc-entry-form" onInput={event=>{try{const lines=readEntryForm(new FormData(event.currentTarget),loads.map(l=>l.id),symptoms);setPreview(lines.map(l=>`รายการ #${l.loadId}: คัด ${Object.values(l.counts).reduce((a,b)=>a+b,0)+l.defects.reduce((a,b)=>a+b.pieces,0)} · เสีย ${l.defects.reduce((a,b)=>a+b.pieces,0)}`).join(' | '));}catch{setPreview('กรุณาตรวจจำนวนที่กรอก');}}} onSubmit={async event=>{
+  <form className="qc-entry-form" onInvalidCapture={event=>{
+   if(event.target!==event.currentTarget.querySelector(':invalid'))return;
+   const field=event.target as HTMLInputElement,message=field.validationMessage||'กรุณาตรวจข้อมูลที่กรอก';setLocalError(message);window.alert(message);
+  }} onInput={event=>{try{const lines=readEntryForm(new FormData(event.currentTarget),loads.map(l=>l.id),symptoms);setPreview(lines.map(l=>`รายการ #${l.loadId}: คัด ${Object.values(l.counts).reduce((a,b)=>a+b,0)+l.defects.reduce((a,b)=>a+b.pieces,0)} · เสีย ${l.defects.reduce((a,b)=>a+b.pieces,0)}`).join(' | '));}catch{setPreview('กรุณาตรวจจำนวนที่กรอก');}}} onSubmit={async event=>{
    event.preventDefault();setLocalError('');const form=new FormData(event.currentTarget);
-   try{const ok=await onSave({op:correcting?'qc-document-correct':'qc-draft-save',documentId:doc.id,...(entry?{entryId:entry.id}:{}),at:form.get('at')?String(form.get('at'))+':00+07:00':'',workerIds:form.getAll('workerIds').map(Number),note:String(form.get('note')??''),reason:String(form.get('reason')??''),lines:readEntryForm(form,loads.map(l=>l.id),symptoms,correcting)});if(ok)onClose();}catch(e){setLocalError((e as Error).message);}
+   try{const ok=await onSave({op:correcting?'qc-document-correct':'qc-draft-save',documentId:doc.id,...(entry?{entryId:entry.id}:{}),at:readQcAt(form,unloadedAt),workerIds:form.getAll('workerIds').map(Number),note:String(form.get('note')??''),reason:String(form.get('reason')??''),lines:readEntryForm(form,loads.map(l=>l.id),symptoms,correcting)});if(ok)onClose();}catch(e){const message=qcErrorMessage((e as Error).message);setLocalError(message);window.alert(message);}
   }}>
    {(error||localError)&&<div className="error" role="alert">{localError||error}{error&&<button type="button" className="button secondary" disabled={busy} onClick={()=>void onReload()}>โหลดล่าสุดและตรวจทาน</button>}</div>}
    {refreshed&&<p role="status">เปิดค่าล่าสุดที่มีผู้แก้ไขแล้ว กรุณาตรวจทานและกรอกใหม่ก่อนบันทึก</p>}
    <p>ลงเฉพาะยอดที่คัดครั้งนี้ แยกตามต้นทาง ระบบจะนำไปรวมในใบเดิมหลังยืนยัน</p>
-   <Field label="วันเวลาที่คัดจริง (เวลาไทย)" name="at" type="datetime-local" defaultValue={localQcTime(entry?.at||undefined)} />
+   <FireTimeInput label="วันเวลาที่คัดจริง (เวลาไทย)" value={localQcTime(entry?.at||undefined)} />
    <label className="field"><span>ผู้คัดจริง (เลือกได้หลายคน)</span><select multiple name="workerIds" size={Math.min(5,Math.max(2,choices.length))} defaultValue={entry?.workers.map(w=>String(w.id))??[]}>
     {choices.map(w=><option key={w.id} value={w.id}>{w.code} · {w.name}{!w.active?' (ข้อมูลเดิม)':''}</option>)}
    </select><small>เลือกชื่อจากทะเบียน คนคัดแยกจากบัญชีธุรการผู้บันทึก</small></label>

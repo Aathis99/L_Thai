@@ -8,7 +8,7 @@ import {Card,Choice,Facts,Section} from '../pressing/shared';
 import EntryForm from './entry-form';
 import ReportView from './report';
 import SourceOrder from './source-order';
-import {matchesQc,outcomeLabels,qcDateTime,reportStatus,reportRevisionLabel,thaiDateRange,refreshedEditor,sourceLabel} from './helpers';
+import {matchesQc,outcomeLabels,qcDateTime,reportStatus,reportRevisionLabel,thaiDateRange,refreshedEditor,sourceLabel,qcErrorMessage} from './helpers';
 import './print.css';
 
 export default function QcDocumentsPage({api,user,openOperations}:{api:Api;user:SessionUser;openOperations:()=>void}){
@@ -24,7 +24,7 @@ export default function QcDocumentsPage({api,user,openOperations}:{api:Api;user:
   if(!data||busy)return;setBusy(true);setError('');setMessage('');const key=JSON.stringify(command);
   if(request.current?.key!==key)request.current={key,body:{request_id:crypto.randomUUID(),revision:data.revision,catalog_version:data.catalogVersion,command}};
   try{const next=await api<Data>('/kiln/action','POST',request.current.body);setData(next);request.current=null;setMessage('บันทึกแล้ว');return next;}
-  catch(e){setError((e as Error).message);return;}
+  catch(e){const message=qcErrorMessage((e as Error).message);setError(message);window.alert(message);return;}
   finally{setBusy(false);}
  };
  const reload=async()=>{if(busy)return;try{
@@ -65,7 +65,7 @@ export default function QcDocumentsPage({api,user,openOperations}:{api:Api;user:
     </Card>;
    })}</div>{doc.entries.length===0&&<p>ยังไม่มีผลคัด เพิ่มข้อมูลจากกระดาษแล้วบันทึกร่างเพื่อตรวจทาน</p>}</Section>
    <Section title="ฉบับเอกสารและประวัติการแก้ไข">{doc.reports.map(version=><p key={version.revision}>{reportRevisionLabel(version.revision)} · {qcDateTime(version.createdAt)} · {version.createdBy} <button className="button secondary" onClick={()=>setPreview({content:version.content,version,superseded:!report.officialCurrent||version!==doc.reports.at(-1)})}>ดูฉบับนี้</button></p>)}{doc.corrections.map((correction,i)=><p key={i}>{qcDateTime(correction.at)} · {correction.actor} · {correction.reason}</p>)}{!doc.reports.length&&!doc.corrections.length&&<p>ยังไม่มีฉบับทางการหรือการแก้ไข</p>}</Section>
-   {editor&&<EntryForm key={`${editor.entry?.id??'new'}:${editor.epoch??0}`} document={doc} workers={data.qcWorkers??[]} entry={editor.entry} busy={busy} error={error} onSave={async command=>!!(await mutate(command))} onClose={()=>setEditor(null)} onReload={reload} refreshed={(editor.epoch??0)>0} />}
+   {editor&&<EntryForm key={`${editor.entry?.id??'new'}:${editor.epoch??0}`} document={doc} unloadedAt={report.unloadedAt} workers={data.qcWorkers??[]} entry={editor.entry} busy={busy} error={error} onSave={async command=>!!(await mutate(command))} onClose={()=>setEditor(null)} onReload={reload} refreshed={(editor.epoch??0)>0} />}
   </>}
   {preview&&<ReportView report={preview.content} version={preview.version} superseded={preview.superseded} worksheet={preview.worksheet} onClose={()=>setPreview(null)} />}
   {sourceOrder&&<SourceOrder api={api} orderKey={sourceOrder} onClose={()=>setSourceOrder(undefined)} />}

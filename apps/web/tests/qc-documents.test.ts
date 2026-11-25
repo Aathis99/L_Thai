@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {readEntryForm,reportStatus,matchesQc,thaiDateRange,reportRevisionLabel,printedSymptoms,refreshedEditor,sourceLabel,reportReferences} from '../src/components/qc-documents/helpers.ts';
+import {readEntryForm,reportStatus,matchesQc,thaiDateRange,reportRevisionLabel,printedSymptoms,refreshedEditor,sourceLabel,reportReferences,readQcAt,qcErrorMessage} from '../src/components/qc-documents/helpers.ts';
+
+test('QC reads 24-hour Bangkok time and explains chronology errors before saving a draft',()=>{
+ const f=new FormData();f.set('at_date','2026-11-25');f.set('at_hour','23');f.set('at_minute','59');
+ assert.equal(readQcAt(f,'2026-11-25T18:00:00+07:00'),'2026-11-25T23:59:00+07:00');
+ f.set('at_hour','17');assert.throws(()=>readQcAt(f,'2026-11-25T18:00:00+07:00'),/เวลาไม่สัมพันธ์กัน.*เอาของลง/);
+ f.set('at_hour','18');f.set('at_minute','00');assert.equal(readQcAt(f,'2026-11-25T18:00:00+07:00'),'2026-11-25T18:00:00+07:00');
+ f.set('at_hour','24');assert.throws(()=>readQcAt(f,''));
+ assert.equal(qcErrorMessage('เวลาคัดที่แก้หลังเวลาจัดสรรเดิม'),'เวลาไม่สัมพันธ์กัน: เวลาคัดที่แก้หลังเวลาจัดสรรเดิม');
+ assert.equal(qcErrorMessage('จำนวนเกินยอดรอคัด'),'จำนวนเกินยอดรอคัด');
+});
 
 test('per-load form sums real symptoms, leaves uncounted A+ blank and never crosses order quantities',()=>{
  const f=new FormData();f.set('load_10_A+','12');f.set('load_10_underfired','3');f.set('load_10_defect_0','2');f.set('load_20_defect_1','4');

@@ -7,7 +7,7 @@ export function NumberInput({ name, label, value = 0, min = 0, step = 1 }: { nam
   return <Field name={name} label={label} type="number" min={min} step={step} defaultValue={value} required />;
 }
 export function TimeInput({ value = nowLocal() }: { value?: string }) { return <Field name="at" label="วันเวลาที่เกิดจริง (เวลาไทย)" type="datetime-local" defaultValue={value} required />; }
-export function FireTimeInput({ value = nowLocal() }: { value?: string }) {
+export function FireTimeInput({ value = nowLocal(),label='วันเวลาที่เกิดจริง (เวลาไทย)' }: { value?: string;label?:string }) {
   const [date, setDate] = useState(value.slice(0, 10));
   const [hour, setHour] = useState(value.slice(11, 13));
   const [minute, setMinute] = useState(value.slice(14, 16));
@@ -16,7 +16,7 @@ export function FireTimeInput({ value = nowLocal() }: { value?: string }) {
     return { value: text, label: text };
   });
   return <fieldset className="kiln-time-input">
-    <legend>วันเวลาที่เกิดจริง (เวลาไทย)</legend>
+    <legend>{label}</legend>
     <Field name="at_date" label="วันที่" type="date" value={date} onChange={event => setDate(event.target.value)} required />
     <div className="kiln-clock-fields">
       <Choice name="at_hour" label="ชั่วโมง (00–23)" value={hour} onChange={setHour} options={timeOptions(24)} />
