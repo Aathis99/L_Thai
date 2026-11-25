@@ -1,6 +1,7 @@
 // QA model only. Never used by the production inventory ledger.
 import { fail } from '../auth.js';
 import { calendarDate, integer } from '../pressing/catalog.js';
+import type {QcDocument} from '../qc-documents/types.js';
 
 export const grades = ['A+', 'A-', 'B'] as const;
 export type Grade = typeof grades[number];
@@ -12,6 +13,7 @@ export interface Item {
   purpose: 'customer' | 'stock'; target: number; rate: number; ready: number; readyOn: string;
   clayRange?: Range; colorRange?: Range; shapeRange?: Range; accepted: Grade[]; synthetic: boolean;
   productId?:number|null;productName?:string|null;productCode?:string|null;requiresMesh?:boolean;clayColor?:string|null;
+  typeId?:number;colorId?:number|null;clayTypeId?:number|null;clayColorId?:number|null;
 }
 export interface Plan { id: number; sourceId: string; kilnId: number; rail: number; date: string; pieces: number; unit: string; input: number; temperature: number; cancelled?: boolean }
 export interface Reservation { id: number; planId: number; sourceId: string; kilnId: number; rail: number; pieces: number; status: 'reserved' | 'loaded' | 'cancelled' }
@@ -24,6 +26,7 @@ export interface Round {
 export interface Qc { id: number; loadId: number; at: string; counts: Counts; defects: { name: string; pieces: number }[]; note: string }
 export interface Allocation { id: number; qcId: number; grade: Grade; pieces: number; destination: 'order' | 'stock'; at: string }
 export interface Model {
+  qcDocuments?:QcDocument[];
   version: 1; nextId: number; items: Item[]; kilns: { id: number; name: string }[];
   plans: Plan[]; reservations: Reservation[]; rounds: Round[]; qcs: Qc[];
   repairReady: { qcId: number; kind: 'underfired' | 'touchup'; pieces: number }[];
