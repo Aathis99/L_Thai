@@ -72,6 +72,7 @@ test('HTTP permissions protect confirmation, corrections, worker privacy, and di
  const cookie=login.headers.get('set-cookie')!.split(';')[0],post=async(command:any)=>fetch(base+'/kiln/action',{method:'POST',headers:{cookie,'Content-Type':'application/json'},body:JSON.stringify(await f.body(command))});
  const bypass=await post({op:'qc',loadId:f.loadId,at:at('13:00'),counts:{'A+':1},defects:[]});assert.equal(bypass.status,409);
  assert.equal((await post({op:'qc-document-open',loadId:f.loadId})).status,201);
+ assert.equal((await post({op:'policy',sourceId:(await readWorkflow(f.pool)).state.items[0].id,accepted:null,stockGrades:[]})).status,400);
  await f.pool.query('UPDATE roles SET permissions=$1 WHERE id=1',[JSON.stringify(['finishing.read'])]);
  assert.equal((await post({op:'qc-draft-save',documentId:1,workerIds:[],lines:[]})).status,403);
  const read=await fetch(base+'/kiln/state',{headers:{cookie}});assert.equal(read.status,200);const json:any=await read.json();assert.deepEqual(Object.keys(json.qcWorkers[0]).sort(),['active','code','id','name']);
@@ -92,4 +93,19 @@ test('source quantity corrections affecting a document require reason and are re
  await assert.rejects(f.save({op:'correct',loadId:f.loadId,pieces:99}),/เหตุผล/);
  d=await f.save({op:'correct',loadId:f.loadId,pieces:99,reason:'ตรวจยอดเข้าใหม่'});
  assert.equal(d.qcReports[d.state.qcDocuments![0].id].input,99);assert.equal(d.state.qcDocuments![0].corrections.at(-1)!.reason,'ตรวจยอดเข้าใหม่');
+});
+test('editing current A+ policy retains historical order and shared stock entitlements',async t=>{
+ const f=await fixture(t);const current=await readWorkflow(f.pool),source=current.state.items[0];
+ const old=transition(current.state,{op:'qc',loadId:f.loadId,at:at('13:00'),counts:{B:2},defects:[]});old.stockGrades=['A+','B'];
+ await f.pool.query('UPDATE kiln_workflow_state SET state=$1 WHERE id=1',[JSON.stringify(old)]);
+ await f.pool.query("UPDATE kiln_order_grade_policies SET accepted='[\"B\"]' WHERE order_id=$1",[Number(source.id.split(':')[1])]);
+ let d=await f.save({op:'allocate',qcId:old.qcs[0].id,grade:'B',destination:'stock',pieces:1,at:at('14:00')});
+ d=await f.save({op:'policy',sourceId:source.id,accepted:['A+'],stockGrades:['A+']});
+ assert.ok(d.state.stockGrades.includes('B'));assert.ok(d.state.items[0].accepted.includes('B'));
+ d=await f.save({op:'allocate',qcId:old.qcs[0].id,grade:'B',destination:'stock',pieces:1,at:at('14:00')});assert.equal(d.summary.stock,2);
+});
+test('direct correction cannot introduce retired grades into a new four-outcome result in an old group',async t=>{
+ const f=await fixture(t);let d=await readWorkflow(f.pool);const old=transition(d.state,{op:'qc',loadId:f.loadId,at:at('13:00'),counts:{B:1},defects:[]});await f.pool.query('UPDATE kiln_workflow_state SET state=$1 WHERE id=1',[JSON.stringify(old)]);
+ d=await f.save({op:'qc',loadId:f.loadId,at:at('13:00'),counts:{'A+':10},defects:[]});const qc=d.state.qcs.at(-1)!;
+ await assert.rejects(f.save({op:'correct',reason:'เปลี่ยนเกรด',qcs:[{id:qc.id,counts:{'A+':9,B:1},defects:[]}]}),/ยกเลิก|A-|B/);
 });

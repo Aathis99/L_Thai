@@ -1,8 +1,15 @@
-import type {QcReport} from '../../../../api/src/qc-documents/types.ts';
+import type {QcReport,QcDocumentEntry,QcDocumentLoad} from '../../../../api/src/qc-documents/types.ts';
 import {symptomNames} from '../../../../api/src/qc-documents/types.ts';
 
 export const outcomeLabels={'A+':'A+',waste:'เสีย',underfired:'ไม่สุก',touchup:'แต้ม'};
 export const reportRevisionLabel=(revision?:number)=>revision===undefined?'ร่าง':revision===0?'ฉบับทางการ':`ฉบับแก้ไขครั้งที่ ${revision}`;
+export const reportReferences=(report:QcReport)=>report.orders.map(o=>o.reference).join(' / ');
+export function sourceLabel(source:QcDocumentLoad){return source.parentQcId?`${source.code} · จาก${source.parentDocumentNumber?'ใบ '+source.parentDocumentNumber:'ผลคัดเดิม'} · ผลคัด #${source.parentQcId} (${source.repairKind==='underfired'?'ไม่สุก':'แต้ม'})`:source.code;}
+export function refreshedEditor(original:QcDocumentEntry|undefined,latest:QcDocumentEntry|undefined){
+ if(!original)return {kind:'keep' as const};
+ if(!latest||latest.status!==original.status)return {kind:'close' as const};
+ return JSON.stringify(original)===JSON.stringify(latest)?{kind:'keep' as const}:{kind:'replace' as const,entry:latest};
+}
 export function printedSymptoms(actual:{name:string;pieces:number}[]){return [...symptomNames,...actual.filter(d=>!symptomNames.includes(d.name)).map(d=>d.name)].map(name=>({name,pieces:actual.find(d=>d.name===name)?.pieces??0}));}
 export const localQcTime=(value?:string)=>new Date((value?Date.parse(value):Date.now())+7*3600000).toISOString().slice(0,16);
 export const qcDate=(value:string)=>value?new Date(value).toLocaleDateString('th-TH',{timeZone:'Asia/Bangkok'}):'—';

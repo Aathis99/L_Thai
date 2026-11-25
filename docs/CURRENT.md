@@ -12,7 +12,13 @@
 - ผู้ใช้ตอบ Q16–Q17: เลือก A ยึดใบ QC เป็นหน้าทำงานหลัก และเลข QC คงที่แสดงคู่เลขอ้างอิงออเดอร์ทุกใบ ค้นหา/เปิดต้นทางได้
 - ผู้ใช้อนุมัติ [แบบเต็ม QC](superpowers/specs/2026-11-25-qc-document-design.md) และเริ่มพัฒนาแล้ว 25 พฤศจิกายน 2026 จัดทำ [แผน](superpowers/plans/2026-11-25-qc-documents.md) ทำแบบ Native ใน checkout เดิมตามแนวทางโครงการ
 - สำรองหลักสด `data/backups/qc-documents-25691125-043029-351/lthai.dump` SHA256 `B2FDE40F8822907F60575EEC3DDAF474121F4184E59FC3BE00A227CCEDAA0ACC` ตรวจ archive/checksum แล้ว กู้ฐาน/role `lthai_qc_documents_qa` แยกและตรวจ target ตรงกันก่อนเขียนทดสอบ Credentials อยู่ `.qa/qc-documents/` นอก Git
-- ขั้นถัดไป: พัฒนา domain/API/UI/พิมพ์ตามแผนพร้อมทดสอบ QA หลัก Docker 3001 ยังไม่เปลี่ยน การนำขึ้นหลักรอตรวจรับและยืนยันข้อมูลที่จะเก็บ
+- พัฒนา domain/API/UI/พิมพ์แล้วใน commits `6f735e7`, `2ac4155`, `2e00e07` แบบ additive ใน `kiln_workflow_state` เดิม ไม่มี schema ใหม่ รัน migration สองครั้งบนสำเนา QA แล้วแฮชข้อมูลเดิม 46 ตารางตรงกันก่อนเติมตัวอย่าง QA
+- เปิด QA แยก project `lthai-qc-qa` เว็บ3160/API4160 ใช้ฐาน/role `lthai_qc_documents_qa` ผ่าน credentials `.qa/qc-documents/` บัญชีทดสอบ `qc-review` ข้อมูลตัวอย่างออเดอร์ `QA-QC-OD-001/002` รอบ#13 เข้า240แผ่นเป็น QA เท่านั้น ไม่ย้ายขึ้นหลัก
+- ผู้รีวิวโค้ดอ่านช่วง `e48134b..2e00e07` พบประเด็น membership ของ load ยอด0, เวลาเผาซ้ำ, stale editor, นโยบายเกรดเก่า, retired-grade correction, trace งานซ่อม/หัวเลขออเดอร์, worker snapshots/ฉบับซ้ำ และใบจดหน้างาน เพิ่ม regression tests RED→GREEN และกำลังตรวจชุดสุดท้ายหลังแก้ครบ รวม note250/แถวอาการใน snapshot
+- หลักฐานก่อนชุดสุดท้าย: API130ผ่าน0ล้ม9ข้ามเมื่อเปิด `KILN_QA_MODE=true` (รอบแรก4ล้มเพราะลืมธงQAของชุด prototype แก้ environment แล้วผ่าน), legacy14ผ่าน, หลังแก้ review typecheck/เว็บ57ผ่าน DockerQA buildรอบแรกผ่าน; ชุด API/Dockerหลังแก้กำลังรัน บันทึก private logs/ledger ที่ `.qa/qc-documents/` และ `.superpowers/sdd/2026-11-25-qc-documents/`
+- ผลหลังแก้ review: API137ผ่าน0ล้ม9ข้าม (รวม146), เว็บ57ผ่าน0ล้ม, legacy14ผ่าน0ล้ม รวมผ่าน208; typecheck/Docker API+web buildผ่าน QA3160/API4160 healthy หลัก3001ยัง healthy และไม่ได้ deploy
+- ตรวจเว็บ QA จริงแล้ว: ร่าง60ไม่เปลี่ยนยอด ยืนยัน60จาก240แล้วรอ180 แยกสองออเดอร์ถูกต้อง; สองหน้าต่างแก้ร่างไม่ทับกัน โหลดล่าสุดเปิดค่าใหม่; คัดครบ240 ออกทางการ/พิมพ์ซ้ำ/ฉบับแก้ไข1และฉบับเก่าไม่เปลี่ยน เปิดใบสั่งต้นทางและตัวอย่างใบจดหน้างานได้ ตาม [คู่มือตรวจรับ QC](qc-qa-guide.md)
+- ขั้นถัดไป: ตรวจ PDF/กระดาษ A4 จริงและกรณีหน้าแนบยาว (ยังค้างเพราะ native Brave automation แจ้ง geometry/window bounds) แล้วผู้ใช้ตรวจรับ QA และยืนยันข้อมูลที่จะเก็บก่อนนำขึ้นหลัก บัญชีQA `qc-review` รหัสอยู่ `.qa/qc-documents/review-account.txt` ไม่เข้า Git ไม่ย้ายตัวอย่างQAเอง
 
 ## ล่าสุด — ช่องเวลา 24 ชั่วโมงในรอบเผาและไฟ
 

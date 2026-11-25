@@ -100,6 +100,8 @@
 
 ## Self-review
 
+Progress 25 November 2026: Tasks 1–4 implemented; review fix pass completed with regression tests. Task 5 automated checks and interactive partial/full/correction/concurrent-editor flows passed (API137, web57, legacy14; 9 API skips). Physical PDF/A4 pagination acceptance remains open because native Brave control failed with geometry/window-bounds errors. QA remains available for user acceptance; production cutover is not authorized yet. See `docs/qc-qa-guide.md` for the concrete review state.
+
 The five tasks cover every approved design section: source ownership/grouping (1–2), drafts/partial/legacy (1–3), document-first UI/worker/date (3), numbering and immutable prints (1,4), corrections/dependencies (1–2,3), QA/backups/review (5). Shared types live in one serialization-only file; no document mutation owns a separate inventory ledger. Windows uses private PowerShell setup/test wrappers and existing checkout instead of requiring a new shell/worktree.
 
 Execution ruling: user approved both the design and starting development, so proceed Native without asking for repeated plan approval. This preserves the already authorized scope; production cutover remains a distinct acceptance/data-selection step.

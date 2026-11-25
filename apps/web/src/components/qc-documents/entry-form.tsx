@@ -6,7 +6,7 @@ import {Field} from '../fields';
 import {Modal} from '../pressing/shared';
 import {localQcTime,readEntryForm} from './helpers';
 
-export default function EntryForm({document:doc,workers,entry,busy,error,onSave,onClose,onReload}:{document:QcDocument;workers:QcWorker[];entry?:QcDocumentEntry;busy:boolean;error:string;onSave:(command:Command)=>Promise<boolean>;onClose:()=>void;onReload:()=>Promise<void>}){
+export default function EntryForm({document:doc,workers,entry,busy,error,onSave,onClose,onReload,refreshed=false}:{document:QcDocument;workers:QcWorker[];entry?:QcDocumentEntry;busy:boolean;error:string;onSave:(command:Command)=>Promise<boolean>;onClose:()=>void;onReload:()=>Promise<void>;refreshed?:boolean}){
  const [localError,setLocalError]=useState(''),[preview,setPreview]=useState('');
  const correcting=entry?.status==='confirmed';
  const loads=correcting?doc.loads.filter(l=>entry.lines.some(x=>x.loadId===l.id)):doc.loads;
@@ -18,6 +18,7 @@ export default function EntryForm({document:doc,workers,entry,busy,error,onSave,
    try{const ok=await onSave({op:correcting?'qc-document-correct':'qc-draft-save',documentId:doc.id,...(entry?{entryId:entry.id}:{}),at:form.get('at')?String(form.get('at'))+':00+07:00':'',workerIds:form.getAll('workerIds').map(Number),note:String(form.get('note')??''),reason:String(form.get('reason')??''),lines:readEntryForm(form,loads.map(l=>l.id),symptoms,correcting)});if(ok)onClose();}catch(e){setLocalError((e as Error).message);}
   }}>
    {(error||localError)&&<div className="error" role="alert">{localError||error}{error&&<button type="button" className="button secondary" disabled={busy} onClick={()=>void onReload()}>โหลดล่าสุดและตรวจทาน</button>}</div>}
+   {refreshed&&<p role="status">เปิดค่าล่าสุดที่มีผู้แก้ไขแล้ว กรุณาตรวจทานและกรอกใหม่ก่อนบันทึก</p>}
    <p>ลงเฉพาะยอดที่คัดครั้งนี้ แยกตามต้นทาง ระบบจะนำไปรวมในใบเดิมหลังยืนยัน</p>
    <Field label="วันเวลาที่คัดจริง (เวลาไทย)" name="at" type="datetime-local" defaultValue={localQcTime(entry?.at||undefined)} />
    <label className="field"><span>ผู้คัดจริง (เลือกได้หลายคน)</span><select multiple name="workerIds" size={Math.min(5,Math.max(2,choices.length))} defaultValue={entry?.workers.map(w=>String(w.id))??[]}>
@@ -31,7 +32,7 @@ export default function EntryForm({document:doc,workers,entry,busy,error,onSave,
     <div className="qc-result-inputs"><Field label="ชื่ออาการเพิ่มเติม" name={`load_${load.id}_other_name`} /><Field label="จำนวนอาการเพิ่มเติม" type="number" min="0" step="1" name={`load_${load.id}_other_qty`} /></div>
    </details>;})}
    {preview&&<p role="status">{preview}</p>}
-   <Field label="หมายเหตุ / อาการรอง (ไม่เพิ่มจำนวนแผ่น)" name="note" defaultValue={entry?.note??''} />
+   <Field label="หมายเหตุ / อาการรอง (ไม่เกิน 250 ตัวอักษร ไม่เพิ่มจำนวนแผ่น)" name="note" maxLength={250} defaultValue={entry?.note??''} />
    {correcting&&<Field label="เหตุผลการแก้ไข" name="reason" required />}
    <p>ผู้รายงาน ผู้ตรวจสอบ และผู้อนุมัติลงชื่อบนกระดาษหลังพิมพ์</p>
    <div className="pressing-actions"><button className="button primary" disabled={busy}>{busy?'กำลังบันทึก…':correcting?'บันทึกการแก้ไข':'บันทึกร่าง'}</button><button type="button" className="button secondary" onClick={onClose} disabled={busy}>ยกเลิก</button></div>

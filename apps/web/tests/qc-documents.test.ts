@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {readEntryForm,reportStatus,matchesQc,thaiDateRange,reportRevisionLabel,printedSymptoms} from '../src/components/qc-documents/helpers.ts';
+import {readEntryForm,reportStatus,matchesQc,thaiDateRange,reportRevisionLabel,printedSymptoms,refreshedEditor,sourceLabel,reportReferences} from '../src/components/qc-documents/helpers.ts';
 
 test('per-load form sums real symptoms, leaves uncounted A+ blank and never crosses order quantities',()=>{
  const f=new FormData();f.set('load_10_A+','12');f.set('load_10_underfired','3');f.set('load_10_defect_0','2');f.set('load_20_defect_1','4');
@@ -25,4 +25,13 @@ test('print labels distinguish draft, original, amended and preserve all actual 
  assert.equal(reportRevisionLabel(), 'ร่าง');assert.equal(reportRevisionLabel(0),'ฉบับทางการ');assert.equal(reportRevisionLabel(2),'ฉบับแก้ไขครั้งที่ 2');
  const rows=printedSymptoms([{name:'หัก',pieces:3},{name:'อาการเฉพาะงาน',pieces:2}]);assert.equal(rows.find(d=>d.name==='หัก')!.pieces,3);assert.equal(rows.find(d=>d.name==='อาการเฉพาะงาน')!.pieces,2);assert.equal(rows.find(d=>d.name==='ฟอง')!.pieces,0);
  assert.equal(rows.reduce((n,d)=>n+d.pieces,0),5);
+});
+test('stale draft refresh replaces changed editor, closes confirmed editor and retains unrelated edits only when target matches',()=>{
+ const original={id:1,status:'draft',note:'ของเดิม'} as any;
+ assert.equal(refreshedEditor(original,{...original}).kind,'keep');assert.equal(refreshedEditor(original,{...original,note:'อีกคนแก้'}).kind,'replace');assert.equal(refreshedEditor(original,{...original,status:'confirmed'}).kind,'close');
+ assert.equal(refreshedEditor(original,undefined).kind,'close');
+});
+test('print header preserves every reference and human-readable repair parent trace',()=>{
+ assert.equal(reportReferences({orders:Array.from({length:6},(_,i)=>({reference:'OD-'+i}))} as any),'OD-0 / OD-1 / OD-2 / OD-3 / OD-4 / OD-5');
+ const label=sourceLabel({code:'ODP',parentQcId:12,parentDocumentNumber:'QC-2569-000001',repairKind:'underfired'} as any);assert.match(label,/ODP/);assert.match(label,/QC-2569-000001/);assert.match(label,/ไม่สุก/);
 });

@@ -49,3 +49,37 @@ test('old persisted grades are preserved and historical group cannot be re-count
  let s=fixture();s=transition(s,{op:'qc',loadId:s.rounds[0].loads[0].id,at:now,counts:{'A-':5,B:2},defects:[]});
  assert.equal(documentCandidates(s).length,0);assert.throws(()=>open(s),/เดิม|ประวัติ/);assert.equal(s.qcs[0].counts['A-'],5);assert.equal(s.qcs[0].counts.B,2);
 });
+test('zero-quantity sibling stays in document membership when corrected back to positive',()=>{
+ let s=fixture();const second=s.rounds[0].loads[1].id;s=transition(s,{op:'correct',loadId:second,pieces:0});s=open(s);
+ assert.equal(s.qcDocuments![0].loads.length,2);s=confirm(draft(s,100));assert.equal(documentReport(s,s.qcDocuments![0]).ready,true);
+ s=transition(s,{op:'correct',loadId:second,pieces:100});const report=documentReport(s,s.qcDocuments![0]);assert.equal(report.input,200);assert.equal(report.pending,100);assert.equal(report.ready,false);
+});
+test('correction cannot move parent sort time after an already consumed refiring',()=>{
+ let s=confirm(draft(open(),100));const doc=s.qcDocuments![0],entry=doc.entries[0],qc=s.qcs[0];
+ s=transition(s,{op:'repair-ready',qcId:qc.id,kind:'underfired',pieces:1});
+ s=transition(s,{op:'plan',sourceId:`repair:${qc.id}:underfired`,kilnId:2,rail:2,date:'2026-11-25',unit:'pieces',input:1,pieces:1,temperature:1150});
+ s=transition(s,{op:'reserve',planId:s.plans.at(-1)!.id,pieces:1});s=transition(s,{op:'rail-ready',kilnId:2,rail:2});s=transition(s,{op:'start',kilnId:2,rail:2,temperature:1150,at:now});
+ assert.throws(()=>transitionDocument(s,{op:'qc-document-correct',documentId:doc.id,entryId:entry.id,reason:'แก้เวลา',at:'2026-11-25T15:00:00+07:00',workerIds:[1],note:entry.note,lines:entry.lines},ctx),/เผาซ้ำ|เข้าเตา/);
+});
+test('metadata correction preserves captured sorter names and identical correction does not issue new revision',()=>{
+ let s=open();for(const load of s.rounds[0].loads)s=confirm(draft(s,100,load.id));const id=s.qcDocuments![0].id;
+ s=transitionDocument(s,{op:'qc-document-issue',documentId:id},ctx);const entry=s.qcDocuments![0].entries[0];
+ const command={op:'qc-document-correct',documentId:id,entryId:entry.id,reason:'ตรวจซ้ำ',at:entry.at,workerIds:[1],note:entry.note,lines:entry.lines};
+ s=transitionDocument(s,command,{...ctx,workers:[{...ctx.workers[0],name:'ชื่อทะเบียนแก้ใหม่'}]});
+ assert.equal(s.qcDocuments![0].entries[0].workers[0].name,entry.workers[0].name);
+ s=transitionDocument(s,{op:'qc-document-issue',documentId:id},ctx);assert.equal(s.qcDocuments![0].reports.length,1);
+ s=transitionDocument(s,{...command,note:'เพิ่มหมายเหตุ'},{...ctx,workers:[{...ctx.workers[0],active:false}]});assert.equal(s.qcDocuments![0].entries[0].workers[0].name,entry.workers[0].name);
+});
+test('draft and confirmation share the existing note limit, and issued report freezes template rows and source identities',()=>{
+ const opened=open(),loadId=opened.rounds[0].loads[0].id;
+ assert.throws(()=>transitionDocument(opened,{op:'qc-draft-save',documentId:opened.qcDocuments![0].id,at:now,workerIds:[1],note:'x'.repeat(251),lines:[{loadId,counts:{'A+':1},defects:[]}]},ctx),/250/);
+ let s=opened;for(const load of s.rounds[0].loads)s=confirm(draft(s,100,load.id));s=transitionDocument(s,{op:'qc-document-issue',documentId:s.qcDocuments![0].id},ctx);
+ const snapshot=s.qcDocuments![0].reports[0].content;assert.equal(snapshot.formVersion,1);assert.equal(snapshot.sources.length,2);assert.equal(snapshot.printSymptoms.length,23);assert.equal(snapshot.sources[0].code,'OD');
+});
+test('re-fired document retains repair parent document and source kind in immutable report projection',()=>{
+ let s=confirm(draft(open(),100));const firstDoc=s.qcDocuments![0],qc=s.qcs[0];s=transition(s,{op:'repair-ready',qcId:qc.id,kind:'underfired',pieces:1});
+ s=transition(s,{op:'plan',sourceId:`repair:${qc.id}:underfired`,kilnId:2,rail:2,date:'2026-11-25',unit:'pieces',input:1,pieces:1,temperature:1150});s=transition(s,{op:'reserve',planId:s.plans.at(-1)!.id,pieces:1});s=transition(s,{op:'rail-ready',kilnId:2,rail:2});s=transition(s,{op:'start',kilnId:2,rail:2,temperature:1150,at:now});
+ const round=s.rounds.at(-1)!;for(const [op,time] of [['stop','15:00'],['withdraw','16:00'],['unload','17:00']])s=transition(s,{op,roundId:round.id,at:`2026-11-25T${time}:00+07:00`});
+ s=transitionDocument(s,{op:'qc-document-open',loadId:round.loads[0].id},ctx);const report=documentReport(s,s.qcDocuments!.at(-1)!);
+ assert.equal(report.sources[0].code,'ODP');assert.equal(report.sources[0].parentQcId,qc.id);assert.equal(report.sources[0].parentDocumentNumber,firstDoc.number);
+});

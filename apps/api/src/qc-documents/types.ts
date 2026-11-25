@@ -4,6 +4,7 @@ export type DocumentCounts=Record<DocumentOutcome,number>;
 export interface QcWorker {id:number;code:string;name:string;active:boolean}
 export interface QcDocumentLoad {
  id:number;sourceId:string;orderKey:string;reference:string;name:string;clay:string;clayColor?:string|null;color:string;code:string;
+ pieces?:number;parentQcId?:number;parentDocumentId?:number;parentDocumentNumber?:string;repairKind?:'underfired'|'touchup';
 }
 export interface QcDocumentLine {loadId:number;counts:DocumentCounts;defects:{name:string;pieces:number}[];qcId?:number}
 export interface QcDocumentEntry {
@@ -12,6 +13,7 @@ export interface QcDocumentEntry {
 }
 export interface QcReportOrder {orderKey:string;reference:string;loadIds:number[];input:number;counts:DocumentCounts}
 export interface QcReport {
+ formVersion:1;sources:QcDocumentLoad[];printSymptoms:{name:string;pieces:number}[];
  number:string;roundId:number;kiln:string;rail:number;name:string;clay:string;clayColor:string;color:string;
  startedAt:string;withdrawnAt:string;unloadedAt:string;input:number;output:number;confirmed:number;pending:number;draftPieces:number;
  counts:DocumentCounts;defects:{name:string;pieces:number}[];orders:QcReportOrder[];entries:QcDocumentEntry[];

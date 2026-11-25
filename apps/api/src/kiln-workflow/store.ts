@@ -131,14 +131,20 @@ export async function saveWorkflow(db:Db,body:any,actor:Recorder){
   if(!historicalQcGroup(before,c.loadId))fail('กรุณาบันทึกผลคัดผ่านใบ QC ของงานนี้',409);
   if((c.counts?.['A-']??0)!==0||(c.counts?.B??0)!==0)fail('ยกเลิก A- และ B สำหรับผลคัดใหม่แล้ว');
  }
- if(c.op==='policy'&&[...(c.accepted??[]),...(c.stockGrades??[])].some(g=>g!=='A+'))fail('นโยบายใหม่เลือกได้เฉพาะเกรด A+');
+ if(c.op==='policy'&&(!Array.isArray(c.accepted)||!Array.isArray(c.stockGrades)))fail('รายการเกรดไม่ถูกต้อง');
+ if(c.op==='policy'&&[...c.accepted,...c.stockGrades].some(g=>g!=='A+'))fail('นโยบายใหม่เลือกได้เฉพาะเกรด A+');
+ const effective=c.op==='policy'?{...c,accepted:[...c.accepted,...(before.items.find(i=>i.id===c.sourceId)?.accepted??[]).filter(g=>g!=='A+')],stockGrades:[...c.stockGrades,...before.stockGrades.filter(g=>g!=='A+')]}:c;
+ if(c.op==='correct')for(const patch of c.qcs??[]){
+  const old=before.qcs.find(q=>q.id===patch.id);
+  if(old&&(['A-','B'] as const).some(g=>(old.counts[g]??0)===0&&(patch.counts?.[g]??0)>0))fail('ยกเลิกการเพิ่มเกรด A- และ B ในผลคัดแล้ว');
+ }
  const owned=(before.qcDocuments??[]).flatMap(d=>d.entries.flatMap(e=>e.lines.map(l=>l.qcId))).filter(id=>id!==undefined);
  const changesDocumentLoad=(before.qcDocuments??[]).some(d=>d.loads.some(l=>l.id===c.loadId));
  if(c.op==='correct'&&(changesDocumentLoad||(c.qcs??[]).some((q:any)=>owned.includes(q.id)))){
   text(c.reason,'เหตุผลแก้ไข',true,1000);
   if((c.qcs??[]).some((q:any)=>owned.includes(q.id)&&((q.counts?.['A-']??0)!==0||(q.counts?.B??0)!==0)))fail('ผลคัดในใบ QC ใช้ A- หรือ B ไม่ได้');
  }
- let state=c.op.startsWith('qc-')?transitionDocument(before,c,{now:new Date().toISOString(),actor:actor.username,workers:await qcWorkers(db)}):transition(before,c);
+ let state=c.op.startsWith('qc-')?transitionDocument(before,c,{now:new Date().toISOString(),actor:actor.username,workers:await qcWorkers(db)}):transition(before,effective);
  const current=state.items.find(i=>i.id===c.sourceId) as LiveItem|undefined;
  if(c.op==='settings'){
   if(!current)fail('ไม่พบต้นทางจริง');
@@ -146,7 +152,7 @@ export async function saveWorkflow(db:Db,body:any,actor:Recorder){
   if(c.colorRange){if(!current.colorId)fail('งานนี้ไม่มีสีเคลือบ');await setRange(db,{color_id:current.colorId,minimum:c.colorRange[0],maximum:c.colorRange[1]},actor);}
   if(c.shapeRange)await db.query('INSERT INTO firing_shape_ranges VALUES($1,$2,$3) ON CONFLICT(type_id) DO UPDATE SET minimum=$2,maximum=$3',[current.typeId,...c.shapeRange]);
  }
- if(c.op==='policy')await db.query('INSERT INTO kiln_order_grade_policies VALUES($1,$2) ON CONFLICT(order_id) DO UPDATE SET accepted=$2',[current!.orderId,JSON.stringify(c.accepted)]);
+ if(c.op==='policy')await db.query('INSERT INTO kiln_order_grade_policies VALUES($1,$2) ON CONFLICT(order_id) DO UPDATE SET accepted=$2',[current!.orderId,JSON.stringify(effective.accepted)]);
  // Re-read settings shared by clay, color and tile type before final validation.
  state.items=await catalog(db);
  state=transition(state,{op:'correct'});

@@ -2,6 +2,7 @@ import {fail,text} from '../auth.js';
 import {calendarDate,integer} from '../pressing/catalog.js';
 import {loadById,rootItem,transition,type Model,type Command} from '../kiln-prototype/model.js';
 import type {DocumentCounts,QcDocument,QcDocumentContext,QcDocumentEntry,QcDocumentLine,QcCandidate,QcReport} from './types.js';
+import {symptomNames} from './types.js';
 
 export {symptomNames} from './types.js';
 const empty=():DocumentCounts=>({'A+':0,waste:0,underfired:0,touchup:0});
@@ -16,15 +17,16 @@ function date(value:unknown){
 }
 function grouped(s:Model):QcCandidate[]{
  const groups=new Map<string,QcCandidate>();
- for(const round of s.rounds.filter(r=>r.unloadedAt))for(const load of round.loads.filter(l=>l.pieces>0)){
+ for(const round of s.rounds.filter(r=>r.unloadedAt))for(const load of round.loads){
   const item=rootItem(s,load.sourceId);
   const identity=item.productId??(item.typeId?`type:${item.typeId}`:`source:${item.id}`);
   const groupKey=JSON.stringify([round.id,identity,item.typeId??item.id,item.clayTypeId??item.clay,item.clayColorId??item.clayColor??null,item.colorId??(item.color?item.id:null)]);
   const group=groups.get(groupKey)??{groupKey,roundId:round.id,loads:[]};
-  group.loads.push({id:load.id,sourceId:load.sourceId,orderKey:item.orderKey,reference:item.reference,name:item.name,clay:item.clay,clayColor:item.clayColor,color:item.color,code:item.purpose==='stock'?(load.sourceId.startsWith('repair:')?'OSP':'OS'):(load.sourceId.startsWith('repair:')?'ODP':'OD')});
+  const repair=/^repair:(\d+):(underfired|touchup)$/.exec(load.sourceId),parent=repair?s.qcDocuments?.find(d=>d.entries.some(e=>e.lines.some(l=>l.qcId===Number(repair[1])))):undefined;
+  group.loads.push({id:load.id,sourceId:load.sourceId,orderKey:item.orderKey,reference:item.reference,name:item.name,clay:item.clay,clayColor:item.clayColor,color:item.color,code:item.purpose==='stock'?(repair?'OSP':'OS'):(repair?'ODP':'OD'),...(repair?{parentQcId:Number(repair[1]),parentDocumentId:parent?.id,parentDocumentNumber:parent?.number,repairKind:repair[2] as 'underfired'|'touchup'}:{})});
   groups.set(groupKey,group);
  }
- return [...groups.values()];
+ return [...groups.values()].filter(g=>g.loads.some(l=>loadById(s,l.id).pieces>0));
 }
 export function documentCandidates(s:Model):QcCandidate[]{
  return grouped(s).filter(g=>!s.qcDocuments?.some(d=>d.groupKey===g.groupKey)&&!s.qcs.some(q=>g.loads.some(l=>l.id===q.loadId)));
@@ -56,9 +58,9 @@ function parseEntry(c:Command,doc:QcDocument,ctx:QcDocumentContext,previous?:QcD
  const workers=c.workerIds.map((id:unknown)=>{
   const old=previous?.workers.find(w=>w.id===id),worker=ctx.workers.find(w=>w.id===id);
   if(!worker?.active&&!old)fail('ไม่พบพนักงานผู้คัดที่ใช้งานอยู่');
-  return structuredClone(worker?.active?worker:old!);
+  return structuredClone(old??worker!);
  });
- return {id:previous?.id??0,status:'draft',at:c.at?date(c.at):'',workers,note:text(c.note??'','หมายเหตุ',false,2000),lines:parseLines(c.lines,doc),recordedBy:previous?.recordedBy??ctx.actor};
+ return {id:previous?.id??0,status:'draft',at:c.at?date(c.at):'',workers,note:text(c.note??'','หมายเหตุ',false,250),lines:parseLines(c.lines,doc),recordedBy:previous?.recordedBy??ctx.actor};
 }
 function confirmedEntry(s:Model,entry:QcDocumentEntry){
  return {...entry,lines:entry.lines.map(line=>{const q=s.qcs.find(q=>q.id===line.qcId);if(!q)fail('ไม่พบผลคัดต้นทางของใบ QC',409);return {...line,counts:{'A+':q.counts['A+'],waste:q.counts.waste,underfired:q.counts.underfired,touchup:q.counts.touchup},defects:q.defects};})};
@@ -76,9 +78,10 @@ export function documentReport(s:Model,doc:QcDocument):QcReport{
  if(!round.startedAt||!round.withdrawnAt||!round.unloadedAt)missing.push('ข้อมูลวันเวลาในงานเตายังไม่ครบ');
  if(entries.some(e=>!e.at||!e.workers.length))missing.push('วันที่หรือผู้คัดยังไม่ครบ');
  const first=doc.loads[0];if(!first?.name||!first.clay||doc.loads.some(l=>!l.reference))missing.push('ข้อมูลสินค้า/ดิน/ออเดอร์ยังไม่ครบ');
- return {number:doc.number,roundId:doc.roundId,kiln:s.kilns.find(k=>k.id===round.kilnId)?.name??String(round.kilnId),rail:round.rail,name:first.name,clay:first.clay,clayColor:first.clayColor??'',color:first.color,
+ const actualDefects=[...symptoms].map(([name,pieces])=>({name,pieces}));
+ return {formVersion:1,sources:doc.loads.map(l=>({...l,pieces:loadById(s,l.id).pieces})),printSymptoms:[...symptomNames,...actualDefects.filter(d=>!symptomNames.includes(d.name)).map(d=>d.name)].map(name=>({name,pieces:symptoms.get(name)??0})),number:doc.number,roundId:doc.roundId,kiln:s.kilns.find(k=>k.id===round.kilnId)?.name??String(round.kilnId),rail:round.rail,name:first.name,clay:first.clay,clayColor:first.clayColor??'',color:first.color,
   startedAt:round.startedAt,withdrawnAt:round.withdrawnAt??'',unloadedAt:round.unloadedAt??'',input,output:input,confirmed,pending:input-confirmed,draftPieces,counts,
-  defects:[...symptoms].map(([name,pieces])=>({name,pieces})),orders:[...orders.values()],entries,ready:missing.length===0,missing,
+  defects:actualDefects,orders:[...orders.values()],entries,ready:missing.length===0,missing,
   officialCurrent:missing.length===0&&doc.reports.at(-1)?.dataVersion===doc.version};
 }
 function checkConfirmation(s:Model,doc:QcDocument,entry:QcDocumentEntry){
@@ -121,8 +124,12 @@ export function transitionDocument(input:Model,c:Command,ctx:QcDocumentContext):
    if(entry.lines.length!==previous.lines.length||entry.lines.some(l=>!previous.lines.some(old=>old.loadId===l.loadId)))fail('ห้ามเปลี่ยนต้นทางของผลคัดที่ยืนยันแล้ว');
    for(const line of entry.lines)line.qcId=previous.lines.find(old=>old.loadId===line.loadId)!.qcId;
    s=transition(s,{op:'correct',qcs:entry.lines.map(l=>({id:l.qcId,counts:l.counts,defects:l.defects})),allocations:c.allocations??[],repairReady:c.repairReady??[]});
-   for(const line of entry.lines){const q=s.qcs.find(q=>q.id===line.qcId)!;q.at=entry.at;q.note=entry.note;if(s.allocations.some(a=>a.qcId===q.id&&Date.parse(a.at)<Date.parse(q.at)))fail('เวลาคัดที่แก้หลังเวลาจัดสรรเดิม');}
-   const target=s.qcDocuments!.find(d=>d.id===doc.id)!;target.entries[target.entries.findIndex(e=>e.id===entry.id)]={...entry,status:'confirmed',confirmedBy:previous.confirmedBy,confirmedAt:previous.confirmedAt};target.version++;target.corrections.push({at:ctx.now,actor:ctx.actor,reason});break;
+   for(const line of entry.lines){const q=s.qcs.find(q=>q.id===line.qcId)!;q.at=entry.at;q.note=entry.note;if(s.allocations.some(a=>a.qcId===q.id&&Date.parse(a.at)<Date.parse(q.at)))fail('เวลาคัดที่แก้หลังเวลาจัดสรรเดิม');
+    if(s.rounds.some(r=>r.loads.some(l=>l.sourceId===`repair:${q.id}:underfired`||l.sourceId===`repair:${q.id}:touchup`)&&Date.parse(r.startedAt)<Date.parse(q.at)))fail('เวลาคัดต้องไม่หลังการเข้าเตาเผาซ้ำที่ใช้ผลคัดนี้');
+   }
+   const target=s.qcDocuments!.find(d=>d.id===doc.id)!;target.entries[target.entries.findIndex(e=>e.id===entry.id)]={...entry,status:'confirmed',confirmedBy:previous.confirmedBy,confirmedAt:previous.confirmedAt};
+   if(reportSignature(input,input.qcDocuments!.find(d=>d.id===doc.id)!)!==reportSignature(s,target))target.version++;
+   target.corrections.push({at:ctx.now,actor:ctx.actor,reason});break;
   }
   case 'qc-document-issue':{
    const report=documentReport(s,doc);if(!report.ready)fail('ยังออกฉบับทางการไม่ได้: '+report.missing.join(', '),409);
