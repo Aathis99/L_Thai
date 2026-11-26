@@ -1,0 +1,6 @@
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import * as clay from '../src/lib/raw-clay.ts';
+test('tonnes convert exactly and signed kg display retains grams',()=>{assert.equal(clay.tonnesToKg('0.001'),'1');assert.equal(clay.tonnesToKg('66.983'),'66983');assert.equal(clay.tonnesToKg('0.000001'),'0.001');assert.throws(()=>clay.tonnesToKg('0.0000001'));assert.equal(clay.displayClayWeight('66983'),'66983 กก. (66.983 ตัน)');assert.equal(clay.displayClayWeight('-1000.125'),'-1000.125 กก. (-1.000125 ตัน)');});
+test('editor can rebase only unchanged document versions',()=>{const doc={id:1,version:2,imageIds:[7],data:{notes:'mine'}} as any;assert.equal(clay.canRebaseClayEditor(doc,{...doc,version:3}),false);assert.equal(clay.canRebaseClayEditor(doc,{...doc}),true);assert.equal(clay.canRebaseClayEditor(undefined,undefined),true);});
+test('uncertain request retains original id body and revision despite edited retry',()=>{const first=clay.clayRequestEnvelope(null,{revision:1,action:'save',payload:{kind:'issue',data:{notes:'original'}}} as any);const retry=clay.clayRequestEnvelope(first,{revision:9,action:'save',payload:{kind:'issue',data:{notes:'changed'}}} as any);assert.deepEqual(retry,first);assert.equal(retry.body.revision,1);});

@@ -1,3 +1,4 @@
+import {handleRawClayRoute} from './raw-clay/routes.js';
 import express, {
   type Request,
   type Response,
@@ -79,6 +80,7 @@ export function createApplication(pool: pg.Pool, options: Options = {}) {
     secure: options.secureCookies || false,
   };
   const parseJson = express.json({ limit: "32kb", strict: true });
+  const parseRawClay = express.json({limit: '34mb', strict: true});
   app.use((req, res, next) => {
     res.set({
       "Cache-Control": "no-store",
@@ -97,6 +99,7 @@ export function createApplication(pool: pg.Pool, options: Options = {}) {
           fail("ต้องส่งข้อมูล JSON", 415);
       }
       if (imageUpload) next();
+      else if(req.method==='POST' && req.path==='/api/raw-clay/action') parseRawClay(req,res,next);
       else parseJson(req, res, next);
     } catch (error) {
       next(error);
@@ -250,6 +253,7 @@ export function createApplication(pool: pg.Pool, options: Options = {}) {
         });
       },
     });
+    if(path.startsWith('/raw-clay/')&&await handleRawClayRoute(req,res,routeAccess('raw_clay.read')))return;
     if(path.startsWith('/catalog/')&&await handleClayRegistryRoute(req,res,routeAccess('pressing.read')))return;
     if(path.startsWith('/catalog/')&&await handleCatalogRoute(req,res,routeAccess('pressing.read')))return;
     if (

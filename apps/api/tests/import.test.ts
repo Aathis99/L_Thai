@@ -1,3 +1,4 @@
+import {rawClayPermissions} from '../src/raw-clay/schema.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -110,7 +111,7 @@ test('legacy snapshot includes uncheckpointed WAL, preserves data and resets seq
   const roles = (await pool.query('SELECT id,permissions FROM roles ORDER BY id')).rows;
   assert.deepEqual(roles.map(row => [row.id, JSON.parse(row.permissions).sort()]), [
     [1, ['color_chart.manage', 'color_chart.read', 'pressing.correct', 'pressing.issue', 'pressing.manage', 'pressing.read',
-      'pressing.record', 'pressing.release', 'pressing.sort', 'roles.manage', ...Object.keys(finishingPermissions)].sort()],
+      'pressing.record', 'pressing.release', 'pressing.sort', 'roles.manage', ...Object.keys(finishingPermissions), ...Object.keys(rawClayPermissions)].sort()],
     [7, ['employees.read']],
   ]);
   const employee = (await pool.query('SELECT * FROM employees')).rows[0];

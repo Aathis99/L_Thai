@@ -1,3 +1,4 @@
+import {rawClayPermissions} from '../src/raw-clay/schema.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
@@ -84,7 +85,7 @@ test('pressing catalog, orders and worker selection use session permissions', as
     assert.deepEqual(roles.find((row: { id: number }) => row.id === 1).permissions.sort(), [
       ...oldAdminPermissions, 'pressing.read', 'pressing.manage', 'pressing.record',
       'pressing.issue', 'pressing.release', 'pressing.sort', 'pressing.correct',
-      'color_chart.read', 'color_chart.manage', ...Object.keys(finishingPermissions),
+      'color_chart.read', 'color_chart.manage', ...Object.keys(finishingPermissions), ...Object.keys(rawClayPermissions),
     ].sort());
   });
 

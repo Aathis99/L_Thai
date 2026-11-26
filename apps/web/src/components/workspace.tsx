@@ -11,6 +11,7 @@ import { Brand } from "./fields";
 import PressingPanel from "./pressing/panel";
 import RecordTable from "./record-table";
 import StockPanel from "./stock/panel";
+import RawClayPanel from "./raw-clay/panel";
 import { visibleCategoryTabs } from "../lib/category";
 import { canOpenPressing } from "../lib/pressing";
 import { visibleStockTabs, type StockTab } from "../lib/stock";
@@ -27,10 +28,11 @@ import {
   type View,
 } from "../lib/types";
 
-type WorkspaceView = View | "pressing" | "category" | "glazing" | "firing" | "qc" | "stock";
-const workspaceViews: WorkspaceView[] = [...views, "category", "stock", "pressing", "glazing", "firing", "qc"];
+type WorkspaceView = View | "pressing" | "category" | "glazing" | "firing" | "qc" | "stock" | "raw-clay";
+const workspaceViews: WorkspaceView[] = [...views, "category", "raw-clay", "stock", "pressing", "glazing", "firing", "qc"];
 
 function canOpenView(user: SessionUser, view: WorkspaceView) {
+  if (view === "raw-clay") return user.permissions.includes("raw_clay.read");
   if (view === "pressing") return canOpenPressing(user.permissions);
   if (view === "category") return visibleCategoryTabs(user.permissions).length > 0;
   if (view === "glazing" || view === "firing" || view === "qc") return user.permissions.includes("finishing.read");
@@ -39,6 +41,7 @@ function canOpenView(user: SessionUser, view: WorkspaceView) {
 }
 
 function workspaceLabel(view: WorkspaceView | null) {
+  if (view === "raw-clay") return "รับดินและวัตถุดิบ";
   if (view === "pressing") return "งานปั๊ม";
   if (view === "category") return "หมวดหมู่";
   if (view === "glazing") return "งานชุบเคลือบ";
@@ -272,9 +275,9 @@ export default function Workspace() {
   const showCategory = canOpenView(user, "category");
   const showFinishing = canOpenView(user, "glazing");
   const showStock = canOpenView(user, "stock");
-  const showFactoryNav = showPressing || showCategory || showFinishing || showStock;
+  const showFactoryNav = showPressing || showCategory || showFinishing || showStock || canOpenView(user, "raw-clay");
   const recordView = view === "pressing" || view === "category" || view === "glazing" ||
-    view === "firing" || view === "qc" || view === "stock" ? null : view;
+    view === "firing" || view === "qc" || view === "stock" || view === "raw-clay" ? null : view;
   const current = records.employees.filter((employee) => !employee.archived);
   const active = current.filter((employee) => employee.active);
   const create = () => {
@@ -315,7 +318,7 @@ export default function Workspace() {
                 >
                   <span aria-hidden="true">
                     {candidate === "pressing" ? "▧" : candidate === "category" ? "◈" : candidate === "glazing" ? "◒" :
-                      candidate === "firing" ? "▤" : candidate === "qc" ? "✓" : candidate === "stock" ? "▦" : symbols[candidate]}
+                      candidate === "firing" ? "▤" : candidate === "qc" ? "✓" : candidate === "stock" ? "▦" : candidate === "raw-clay" ? "▥" : symbols[candidate]}
                   </span>
                   {workspaceLabel(candidate)}
                   {candidate === "employees" && <small>{current.length}</small>}
@@ -386,7 +389,7 @@ export default function Workspace() {
               <div>
                 {(recordView || !view) && <p className="eyebrow">PEOPLE &amp; ACCESS</p>}
                 <h1>{workspaceLabel(view)}</h1>
-                {view !== "stock" && view !== "glazing" && view !== "firing" && view !== "qc" && <p>
+                {view !== "stock" && view !== "glazing" && view !== "firing" && view !== "qc" && view !== "raw-clay" && <p>
                   {view === "pressing"
                     ? "ใบสั่งผลิตและยอดปั๊ม"
                     : view === "category"
@@ -491,6 +494,7 @@ export default function Workspace() {
             {(view==='firing'||view==='qc')&&showFinishing&&<KilnArea api={api} user={user} qc={view==='qc'} qa={process.env.NEXT_PUBLIC_KILN_QA==='true'}
               initialRoundId={view==='qc'?qcRound:undefined} openQc={roundId=>void navigate('qc',{roundId})} openStock={()=>void navigate('stock',{stockTab:'finished'})}/>}
             {view === "stock" && showStock && <StockPanel api={api} user={user} initialTab={stockTab} />}
+            {view === "raw-clay" && canOpenView(user, "raw-clay") && <RawClayPanel api={api} user={user} />}
             {recordView && (
               <section className="panel">
                 <div className="panel-toolbar">

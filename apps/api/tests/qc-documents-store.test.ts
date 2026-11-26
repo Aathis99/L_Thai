@@ -11,7 +11,8 @@ import {createApplication} from '../src/app.js';
 import {hashPassword} from '../src/auth.js';
 import {transition} from '../src/kiln-prototype/model.js';
 import {listReceipts} from '../src/finishing/qc.js';
-const day='2026-11-25',at=(time:string)=>`${day}T${time}:00+07:00`;
+// recordIssue records the current server day; the firing fixture must follow that readiness day.
+const day=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()),at=(time:string)=>`${day}T${time}:00+07:00`;
 async function fixture(t:TestContext){
  assert.ok(process.env.DATABASE_URL);const admin=new pg.Pool({connectionString:process.env.DATABASE_URL});
  assert.equal((await one(admin,'SELECT current_database() db')).db,'lthai_qc_documents_qa');

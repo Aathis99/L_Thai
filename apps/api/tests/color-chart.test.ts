@@ -1,3 +1,4 @@
+import {rawClayPermissions} from '../src/raw-clay/schema.js';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
@@ -75,7 +76,7 @@ test('color chart migration grants reserved admin access and catalog writes requ
   await migrate(pool);
 
   const adminPermissions = (await call('/me', 'GET', undefined, admin)).body.user.permissions;
-  assert.deepEqual(adminPermissions.sort(), [...previousPermissions, 'color_chart.read', 'color_chart.manage', ...Object.keys(finishingPermissions)].sort());
+  assert.deepEqual(adminPermissions.sort(), [...previousPermissions, 'color_chart.read', 'color_chart.manage', ...Object.keys(finishingPermissions), ...Object.keys(rawClayPermissions)].sort());
   assert.deepEqual((await call('/me', 'GET', undefined, reader)).body.user.permissions, ['employees.read']);
   assert.equal((await call('/color-chart')).status, 401);
   assert.equal((await call('/color-chart', 'GET', undefined, reader)).status, 403);
