@@ -1252,6 +1252,59 @@
   .status-pill.cancelled .status-dot {
     background: var(--danger-dot, #c03935);
   }
+  .status-pill.neutral {
+    background: var(--neutral-bg, #eaeeeb);
+    color: var(--neutral-text, #44524b);
+    border-color: var(--neutral-border, #cfd8d2);
+  }
+  .status-pill.neutral .status-dot {
+    background: var(--text-muted, #4f6058);
+  }
+  .pressing-badge-row {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+  }
+  .pressing-row-actions {
+    flex-wrap: nowrap;
+    white-space: nowrap;
+  }
+  .pressing-empty {
+    padding: 24px 20px;
+    border: 1px dashed var(--border-strong, #c2ccc4);
+    border-radius: 10px;
+    background: var(--surface-raised, #eff2ec);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .pressing-empty p {
+    margin: 0;
+    color: var(--text-muted, #4f6058);
+  }
+  .pressing-live-preview {
+    padding: 12px 14px;
+    border: 1px solid var(--success-border, #b8dec7);
+    border-radius: 9px;
+    background: var(--success-bg, #e4f2ea);
+    color: var(--success-text, #18563a);
+    font-size: 14.5px;
+    font-variant-numeric: tabular-nums;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .pressing-live-preview strong {
+    color: var(--text-main, #1e2c26);
+  }
+  .pressing-live-preview .subtext {
+    color: var(--text-muted, #4f6058);
+    margin-top: 0;
+  }
   .status-cell {
     display: inline-flex;
     align-items: center;

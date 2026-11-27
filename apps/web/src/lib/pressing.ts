@@ -72,6 +72,7 @@ export interface PressingEntry extends EntryValues {
   pieces: number;
   original_pieces: number;
   pieces_per_rack: number;
+  rest_days?: number;
   square_meters: number | null;
   recorded_by_username: string;
   recorded_at: string;
@@ -270,4 +271,169 @@ export function openingStockPayload(form: FormData) {
     ready_on: formText(form, "ready_on") || null,
     ready_confirmed: form.has("ready_confirmed"),
   };
+}
+
+export type OrderProgressStatus = "short" | "complete" | "over";
+
+export const orderProgressLabels: Record<OrderProgressStatus, string> = {
+  short: "ยังไม่ครบ",
+  complete: "ครบตามสั่ง",
+  over: "ปั๊มเกิน",
+};
+
+export function orderProgressStatus(order: Pick<ProductionOrder, "short_pieces" | "over_pieces">): OrderProgressStatus {
+  if (order.short_pieces > 0) return "short";
+  if (order.over_pieces > 0) return "over";
+  return "complete";
+}
+
+export function pressingKpi(
+  orders: readonly ProductionOrder[],
+  entries: readonly PressingEntry[],
+  today = bangkokDate(),
+) {
+  let incompleteOrders = 0;
+  let totalShortPieces = 0;
+  let customerOrders = 0;
+  let stockOrders = 0;
+  for (const order of orders) {
+    if (order.short_pieces > 0) {
+      incompleteOrders++;
+      totalShortPieces += order.short_pieces;
+    }
+    if (order.purpose === "customer") customerOrders++;
+    else stockOrders++;
+  }
+  let todayPieces = 0;
+  let totalPressedPieces = 0;
+  for (const entry of entries) {
+    totalPressedPieces += entry.pieces;
+    if (entry.pressed_on === today) todayPieces += entry.pieces;
+  }
+  return {
+    incompleteOrders,
+    totalShortPieces,
+    todayPieces,
+    totalPressedPieces,
+    totalEntries: entries.length,
+    totalOrders: orders.length,
+    customerOrders,
+    stockOrders,
+  };
+}
+
+function normalizedText(parts: readonly (string | null | undefined)[]): string {
+  return parts.filter(Boolean).join(" ").toLocaleLowerCase("th");
+}
+
+export function filterAndSortOrders(
+  orders: readonly ProductionOrder[],
+  types: readonly TileType[],
+  filters: { search: string; purpose: "" | "customer" | "stock"; status: "" | OrderProgressStatus },
+): ProductionOrder[] {
+  const query = filters.search.trim().toLocaleLowerCase("th");
+  return orders
+    .filter((order) => {
+      if (filters.purpose && order.purpose !== filters.purpose) return false;
+      if (filters.status && orderProgressStatus(order) !== filters.status) return false;
+      if (!query) return true;
+      const haystack = normalizedText([
+        orderName(order),
+        order.customer_reference,
+        order.product_code,
+        order.product_name,
+        order.clay_name_snapshot,
+        order.production_clay,
+        order.clay_color_name_snapshot,
+        order.production_clay_color,
+        order.color_name,
+        tileName(types, order.type_id),
+      ]);
+      return haystack.includes(query);
+    })
+    .sort((a, b) => {
+      const aShort = a.short_pieces > 0 ? 0 : 1;
+      const bShort = b.short_pieces > 0 ? 0 : 1;
+      if (aShort !== bShort) return aShort - bShort;
+      return b.id - a.id;
+    });
+}
+
+export function filterEntries(
+  entries: readonly PressingEntry[],
+  orders: readonly ProductionOrder[],
+  types: readonly TileType[],
+  filters: { search: string; orderId: string; from: string; to: string },
+): PressingEntry[] {
+  const query = filters.search.trim().toLocaleLowerCase("th");
+  const orderId = filters.orderId ? Number(filters.orderId) : null;
+  const orderMap = new Map(orders.map((order) => [order.id, order]));
+  return entries
+    .filter((entry) => {
+      if (orderId !== null && entry.order_id !== orderId) return false;
+      if (filters.from && entry.pressed_on < filters.from) return false;
+      if (filters.to && entry.pressed_on > filters.to) return false;
+      if (!query) return true;
+      const order = orderMap.get(entry.order_id);
+      const haystack = normalizedText([
+        `#${entry.id}`,
+        entry.employee_name,
+        entry.note,
+        order ? orderName(order) : null,
+        order?.customer_reference,
+        order?.product_code,
+        order?.product_name,
+        order ? tileName(types, order.type_id) : null,
+      ]);
+      return haystack.includes(query);
+    })
+    .sort((a, b) => b.id - a.id);
+}
+
+export function restEndDate(pressedOn: string, restDays: number): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(pressedOn) || !Number.isInteger(restDays) || restDays < 0) return null;
+  const date = new Date(`${pressedOn}T00:00:00Z`);
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== pressedOn) return null;
+  date.setUTCDate(date.getUTCDate() + restDays);
+  if (!Number.isFinite(date.getTime()) || date.getUTCFullYear() > 9999) return null;
+  return date.toISOString().slice(0, 10);
+}
+
+function parseNonNegativeInt(value: string, blankIsZero: boolean): number | null {
+  const text = value.trim();
+  if (text === "") return blankIsZero ? 0 : null;
+  if (!/^\d+$/.test(text)) return null;
+  const parsed = Number(text);
+  return parsed <= maxPressingInteger ? parsed : null;
+}
+
+export function previewPressingEntry(input: {
+  order?: ProductionOrder;
+  tile?: TileType;
+  pressedOn: string;
+  fullRacks: string;
+  loosePieces: string;
+  piecesPerRackOverride?: number;
+  restDaysOverride?: number;
+  previousPieces?: number;
+}) {
+  const piecesPerRack = input.piecesPerRackOverride ?? input.order?.production_pieces_per_rack ?? input.tile?.pieces_per_rack ?? null;
+  const restDays = input.restDaysOverride ?? input.order?.production_rest_days ?? input.tile?.rest_days ?? null;
+  const piecesPerSqm = input.order?.pieces_per_sqm ?? input.tile?.pieces_per_sqm ?? null;
+  const racks = parseNonNegativeInt(input.fullRacks, false);
+  const loose = parseNonNegativeInt(input.loosePieces, true);
+  let pieces: number | null = null;
+  if (piecesPerRack !== null && racks !== null && loose !== null) {
+    const total = racks * piecesPerRack + loose;
+    if (total >= 1 && total <= maxPressingInteger) pieces = total;
+  }
+  const readyOn = restDays !== null ? restEndDate(input.pressedOn, restDays) : null;
+  const squareMeters = pieces !== null && piecesPerSqm ? pieces / piecesPerSqm : null;
+  const projectedOrderPieces = input.order && pieces !== null
+    ? input.order.pressed_pieces - (input.previousPieces ?? 0) + pieces
+    : null;
+  const projectedDiff = input.order && projectedOrderPieces !== null
+    ? projectedOrderPieces - input.order.target_pieces
+    : null;
+  return { pieces, piecesPerRack, restDays, readyOn, squareMeters, projectedOrderPieces, projectedDiff };
 }

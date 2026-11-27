@@ -5,11 +5,18 @@ import {
   canOpenPressing,
   createPressingRequestKey,
   entryFormValues,
+  filterAndSortOrders,
+  filterEntries,
   openingStockPayload,
+  orderProgressStatus,
   pressingEntryPayload,
+  pressingKpi,
+  previewPressingEntry,
+  restEndDate,
   workerName,
   tileName,
   type PressingData,
+  type PressingEntry,
   type ProductionOrder,
   type TileType,
 } from "../src/lib/pressing.ts";
@@ -152,4 +159,138 @@ test("opening balances require the verified source reference and reuse it on re-
   });
   assert.equal(openingStockPayload(openingForm("นับ-2026-11-11-A")).source_key, "นับ-2026-11-11-A");
   assert.throws(() => openingStockPayload(openingForm(" ")), /รหัสอ้างอิงยอดตรวจนับ/);
+});
+
+test("orderProgressStatus classifies short, complete, and over orders", () => {
+  assert.equal(orderProgressStatus({ ...order, short_pieces: 10, over_pieces: 0 }), "short");
+  assert.equal(orderProgressStatus({ ...order, short_pieces: 0, over_pieces: 0 }), "complete");
+  assert.equal(orderProgressStatus({ ...order, short_pieces: 0, over_pieces: 5 }), "over");
+});
+
+test("pressingKpi aggregates incomplete orders, today pressed pieces, and purpose split", () => {
+  const orders: ProductionOrder[] = [
+    { ...order, id: 1, purpose: "customer", target_pieces: 100, pressed_pieces: 40, short_pieces: 60, over_pieces: 0 },
+    { ...order, id: 2, purpose: "customer", target_pieces: 200, pressed_pieces: 200, short_pieces: 0, over_pieces: 0 },
+    { ...order, id: 3, purpose: "stock", target_pieces: 50, pressed_pieces: 10, short_pieces: 40, over_pieces: 0 },
+  ];
+  const entries: PressingEntry[] = [
+    { id: 1, order_id: 1, employee_id: 1, employee_name: "สมชาย", pressed_on: "2026-11-27", full_racks: 20, loose_pieces: 0,
+      note: null, ready_on: "2026-11-28", pieces: 40, original_pieces: 40, pieces_per_rack: 2, square_meters: null,
+      recorded_by_username: "u", recorded_at: "2026-11-27T01:00:00Z" },
+    { id: 2, order_id: 2, employee_id: 2, employee_name: "วิไล", pressed_on: "2026-11-26", full_racks: 100, loose_pieces: 0,
+      note: null, ready_on: "2026-11-27", pieces: 200, original_pieces: 200, pieces_per_rack: 2, square_meters: null,
+      recorded_by_username: "u", recorded_at: "2026-11-26T01:00:00Z" },
+    { id: 3, order_id: 3, employee_id: 1, employee_name: "สมชาย", pressed_on: "2026-11-27", full_racks: 5, loose_pieces: 0,
+      note: null, ready_on: "2026-11-28", pieces: 10, original_pieces: 10, pieces_per_rack: 2, square_meters: null,
+      recorded_by_username: "u", recorded_at: "2026-11-27T02:00:00Z" },
+  ];
+  assert.deepEqual(pressingKpi(orders, entries, "2026-11-27"), {
+    incompleteOrders: 2,
+    totalShortPieces: 100,
+    todayPieces: 50,
+    totalPressedPieces: 250,
+    totalEntries: 3,
+    totalOrders: 3,
+    customerOrders: 2,
+    stockOrders: 1,
+  });
+});
+
+test("filterAndSortOrders places incomplete orders first newest-first and filters by query, purpose, and status", () => {
+  const orders: ProductionOrder[] = [
+    { ...order, id: 1, purpose: "customer", customer_reference: "OD-001", product_code: "LT-411", product_name: "หกเหลี่ยม", short_pieces: 0, over_pieces: 0 },
+    { ...order, id: 2, purpose: "stock", customer_reference: "OS-002", short_pieces: 50, over_pieces: 0 },
+    { ...order, id: 3, purpose: "customer", customer_reference: "OD-003", product_code: "LT-205", product_name: "สี่เหลี่ยม", short_pieces: 20, over_pieces: 0 },
+    { ...order, id: 4, purpose: "customer", customer_reference: "OD-004", short_pieces: 0, over_pieces: 15 },
+  ];
+  const allSorted = filterAndSortOrders(orders, [tile], { search: "", purpose: "", status: "" });
+  assert.deepEqual(allSorted.map((item) => item.id), [3, 2, 4, 1]);
+  assert.deepEqual(
+    filterAndSortOrders(orders, [tile], { search: "lt-411", purpose: "customer", status: "complete" }).map((item) => item.id),
+    [1],
+  );
+  assert.deepEqual(
+    filterAndSortOrders(orders, [tile], { search: "", purpose: "", status: "over" }).map((item) => item.id),
+    [4],
+  );
+});
+
+test("filterEntries returns newest first and filters by search, orderId, and pressed_on range", () => {
+  const orders: ProductionOrder[] = [
+    { ...order, id: 10, purpose: "customer", customer_reference: "OD-010", product_code: "LT-411" },
+    { ...order, id: 11, purpose: "stock", customer_reference: "OS-011" },
+  ];
+  const entries: PressingEntry[] = [
+    { id: 1, order_id: 10, employee_id: 1, employee_name: "สมชาย ใจดี", pressed_on: "2026-11-25", full_racks: 10, loose_pieces: 0,
+      note: "รอบเช้า", ready_on: "2026-11-28", pieces: 20, original_pieces: 20, pieces_per_rack: 2, square_meters: null,
+      recorded_by_username: "u", recorded_at: "2026-11-25T01:00:00Z" },
+    { id: 2, order_id: 11, employee_id: 2, employee_name: "วิไล รักงาน", pressed_on: "2026-11-26", full_racks: 15, loose_pieces: 1,
+      note: "เร่งด่วน", ready_on: "2026-11-29", pieces: 31, original_pieces: 31, pieces_per_rack: 2, square_meters: null,
+      recorded_by_username: "u", recorded_at: "2026-11-26T01:00:00Z" },
+    { id: 3, order_id: 10, employee_id: 1, employee_name: "สมชาย ใจดี", pressed_on: "2026-11-27", full_racks: 5, loose_pieces: 0,
+      note: null, ready_on: "2026-11-30", pieces: 10, original_pieces: 10, pieces_per_rack: 2, square_meters: null,
+      recorded_by_username: "u", recorded_at: "2026-11-27T01:00:00Z" },
+  ];
+  assert.deepEqual(
+    filterEntries(entries, orders, [tile], { search: "", orderId: "", from: "", to: "" }).map((e) => e.id),
+    [3, 2, 1],
+  );
+  assert.deepEqual(
+    filterEntries(entries, orders, [tile], { search: "สมชาย", orderId: "10", from: "2026-11-26", to: "2026-11-27" }).map((e) => e.id),
+    [3],
+  );
+  assert.deepEqual(
+    filterEntries(entries, orders, [tile], { search: "เร่งด่วน", orderId: "", from: "", to: "" }).map((e) => e.id),
+    [2],
+  );
+});
+
+test("restEndDate matches API UTC date addition and rejects invalid calendar dates", () => {
+  assert.equal(restEndDate("2026-11-27", 3), "2026-11-30");
+  assert.equal(restEndDate("2026-02-27", 3), "2026-03-02");
+  assert.equal(restEndDate("2026-02-31", 1), null);
+  assert.equal(restEndDate("", 2), null);
+});
+
+test("previewPressingEntry computes pieces, readyOn, sqm, and projected order balance", () => {
+  const targetOrder: ProductionOrder = {
+    ...order, id: 12, target_pieces: 100, pressed_pieces: 40, short_pieces: 60, over_pieces: 0,
+    production_pieces_per_rack: 24, production_rest_days: 3, pieces_per_sqm: 10,
+  };
+  const preview = previewPressingEntry({
+    order: targetOrder,
+    tile,
+    pressedOn: "2026-11-27",
+    fullRacks: "2",
+    loosePieces: "4",
+  });
+  assert.deepEqual(preview, {
+    pieces: 52,
+    piecesPerRack: 24,
+    restDays: 3,
+    readyOn: "2026-11-30",
+    squareMeters: 5.2,
+    projectedOrderPieces: 92,
+    projectedDiff: -8,
+  });
+
+  // Edit mode subtracts previousPieces before adding new pieces and respects piecesPerRackOverride
+  const editPreview = previewPressingEntry({
+    order: targetOrder,
+    tile,
+    pressedOn: "2026-11-27",
+    fullRacks: "3",
+    loosePieces: "",
+    piecesPerRackOverride: 20,
+    previousPieces: 40,
+  });
+  assert.deepEqual(editPreview, {
+    pieces: 60,
+    piecesPerRack: 20,
+    restDays: 3,
+    readyOn: "2026-11-30",
+    squareMeters: 6,
+    projectedOrderPieces: 60,
+    projectedDiff: -40,
+  });
 });
