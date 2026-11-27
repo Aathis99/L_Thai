@@ -44,12 +44,15 @@ export function Card({
 export function Facts({ values }: { values: Record<string, ReactNode> }) {
   return (
     <dl className="pressing-facts">
-      {Object.entries(values).map(([label, value]) => (
-        <div key={label}>
-          <dt>{label}</dt>
-          <dd>{value ?? "—"}</dd>
-        </div>
-      ))}
+      {Object.entries(values).map(([label, value]) => {
+        const wide = typeof value === "string" && (value.length > 60 || value.includes("\n"));
+        return (
+          <div key={label} className={wide ? "fact-wide" : undefined}>
+            <dt>{label}</dt>
+            <dd>{value ?? "—"}</dd>
+          </div>
+        );
+      })}
     </dl>
   );
 }
@@ -96,8 +99,8 @@ export function Check({
 }
 
 export function Modal({
-  title, onClose, busy, guardDismissal, children,
-}: { title: string; onClose: () => void; busy?: boolean; guardDismissal?: boolean; children: ReactNode }) {
+  title, onClose, busy, guardDismissal, size = "md", children,
+}: { title: string; onClose: () => void; busy?: boolean; guardDismissal?: boolean; size?: "md" | "lg"; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
   useEffect(() => {
@@ -108,7 +111,7 @@ export function Modal({
   return (
     <dialog
       ref={ref}
-      className="pressing-dialog"
+      className={`pressing-dialog${size === "lg" ? " dialog-lg" : ""}`}
       aria-labelledby={id}
       closedby={guardDismissal ? "none" : undefined}
       onKeyDown={(event) => {
@@ -133,7 +136,7 @@ export function Modal({
 type RequestBody = Record<string, unknown>;
 
 export function FormDialog({
-  api, title, path, scope = "pressing", method = "POST", intent, keyField, submitLabel, submitDisabled, build, onSaved, onClose, onStale, children,
+  api, title, path, scope = "pressing", method = "POST", intent, size = "md", keyField, submitLabel, submitDisabled, build, onSaved, onClose, onStale, children,
 }: {
   api: Api;
   title: string;
@@ -141,6 +144,7 @@ export function FormDialog({
   scope?: "pressing" | "finishing" | "catalog";
   method?: "POST" | "PUT" | "DELETE";
   intent?: "success" | "warning";
+  size?: "md" | "lg";
   keyField?: "request_id" | "source_key";
   submitLabel: string;
   submitDisabled?: boolean;
@@ -217,7 +221,7 @@ export function FormDialog({
   }
 
   return (
-    <Modal title={title} onClose={dismiss} busy={busy} guardDismissal={guardNavigation}>
+    <Modal title={title} onClose={dismiss} busy={busy} guardDismissal={guardNavigation} size={size}>
       <form onSubmit={(event) => void submit(event)}>
         <div className="modal-body">
           {error && <p className="error-banner" role="alert">{error}</p>}
@@ -253,7 +257,7 @@ export function HistoryDialog<T extends { id: number }>({
     return () => { active = false; };
   }, [api, path, attempt]);
   return (
-    <Modal title={title} onClose={onClose}>
+    <Modal title={title} onClose={onClose} size="lg">
       <div className="modal-body">
         {error ? (
           <div className="error-banner" role="alert">

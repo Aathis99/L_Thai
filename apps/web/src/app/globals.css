@@ -81,9 +81,23 @@
   }
 
   dialog {
-    @apply m-auto border border-[color:var(--border,#d8dfd9)] rounded-[12px] p-0 text-[color:var(--text-main,#1e2c26)] bg-[var(--surface,#fcfdfb)] max-h-[90dvh];
-    width: min(620px, calc(100% - 32px));
+    @apply m-auto border border-[color:var(--border,#d8dfd9)] rounded-[14px] p-0 text-[color:var(--text-main,#1e2c26)] bg-[var(--surface,#fcfdfb)] max-h-[88dvh] overflow-hidden;
+    width: min(560px, calc(100% - 48px));
     box-shadow: 0 20px 56px #12201a2e;
+  }
+  dialog[open] {
+    display: flex;
+    flex-direction: column;
+  }
+  dialog > form {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+  dialog.dialog-lg {
+    width: min(800px, calc(100% - 48px));
   }
   dialog::backdrop {
     background: #12201a75;
@@ -531,7 +545,7 @@
 
   /* Native dialog layout and toast transitions. */
   .modal-head {
-    @apply flex items-center justify-between py-[18px] px-[22px] border-b border-factory-line;
+    @apply flex items-center justify-between py-[18px] px-[24px] border-b border-factory-line shrink-0;
   }
   .modal-head h2 {
     @apply m-0 text-[20px];
@@ -540,13 +554,93 @@
     @apply text-[13.5px] mb-[4px];
   }
   .modal-body {
-    @apply py-[20px] px-[22px] max-h-[68dvh] overflow-auto;
+    @apply py-[20px] px-[24px] overflow-y-auto flex-1 min-h-0;
   }
   .modal-foot {
-    @apply py-[14px] px-[22px] border-t border-factory-line flex justify-end gap-[10px] bg-[color:var(--surface-raised,#eff2ec)];
+    @apply py-[14px] px-[24px] border-t border-factory-line flex flex-wrap items-center justify-end gap-[10px] bg-[color:var(--surface-raised,#eff2ec)] shrink-0;
+  }
+  .modal-foot-split {
+    @apply justify-between;
+  }
+  .modal-foot-hint {
+    @apply text-[13.5px] text-[color:var(--text-muted,#4f6058)] mr-auto;
+  }
+  .modal-foot-actions {
+    @apply flex flex-wrap items-center justify-end gap-[10px] ml-auto;
   }
   .form-grid {
-    @apply grid grid-cols-[1fr_1fr] gap-y-0 gap-x-[18px];
+    @apply grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-y-0 gap-x-[18px];
+  }
+  .form-span-full {
+    grid-column: 1 / -1;
+  }
+  .form-section {
+    @apply border border-[color:var(--border,#d8dfd9)] rounded-[10px] bg-[color:var(--surface-raised,#eff2ec)] p-[16px_18px] m-0 mb-[16px] min-w-0;
+  }
+  .form-section:last-child {
+    @apply mb-0;
+  }
+  .form-section-title {
+    @apply block w-full text-[15px] font-bold text-[color:var(--text-main,#1e2c26)] pb-[10px] mb-[14px] border-b border-[color:var(--border,#d8dfd9)];
+  }
+  .form-section .field:last-child,
+  .form-section .helper:last-child,
+  .form-section > p:last-child {
+    @apply mb-0;
+  }
+  .weight-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 136px;
+    gap: 10px;
+    align-items: end;
+    margin-bottom: 14px;
+  }
+  .weight-row .field {
+    margin-bottom: 0;
+  }
+  .weigh-pair {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+  .weigh-card {
+    @apply border border-[color:var(--border,#d8dfd9)] rounded-[9px] bg-[var(--surface,#fcfdfb)] p-[14px] m-0 min-w-0;
+  }
+  .weigh-card-title {
+    @apply block text-[14px] font-bold text-[color:var(--text-main,#1e2c26)] mb-[10px];
+  }
+  .clock-box {
+    @apply border border-[color:var(--border,#d8dfd9)] rounded-[8px] bg-[var(--surface,#fcfdfb)] p-[12px] m-0 mb-[14px] min-w-0;
+  }
+  .clock-head {
+    @apply flex flex-wrap items-center justify-between gap-[8px] mb-[10px];
+  }
+  .clock-label {
+    @apply text-[14px] font-semibold text-[color:var(--text-main,#1e2c26)];
+  }
+  .clock-actions {
+    @apply flex items-center gap-[6px];
+  }
+  .clock-actions .button,
+  .clock-actions .quiet {
+    min-height: 32px;
+    padding: 4px 10px;
+    font-size: 13.5px;
+  }
+  .clock-grid {
+    display: grid;
+    grid-template-columns: minmax(136px, 1.45fr) minmax(76px, 1fr) minmax(76px, 1fr);
+    gap: 8px;
+  }
+  .clock-grid .field {
+    margin-bottom: 0;
+  }
+  .weigh-card .clock-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .weigh-card .clock-grid > :first-child {
+    grid-column: 1 / -1;
   }
   .product-dimensions {
     display: grid;
@@ -815,14 +909,35 @@
     .error-banner {
       @apply text-[14px];
     }
+    dialog,
+    dialog.dialog-lg,
+    .pressing-dialog,
+    .pressing-dialog.dialog-lg {
+      width: calc(100% - 24px);
+      max-height: 92dvh;
+    }
     .form-grid,
-    .permission-grid {
+    .permission-grid,
+    .weigh-pair {
       @apply grid-cols-[1fr];
+    }
+    .clock-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .clock-grid > :first-child {
+      grid-column: 1 / -1;
     }
     .modal-head,
     .modal-body,
     .modal-foot {
       @apply px-[16px];
+    }
+    .form-section,
+    .weigh-card {
+      padding: 12px;
+    }
+    .clock-box {
+      padding: 10px;
     }
     .mobile-logout {
       @apply inline-block;
@@ -932,6 +1047,14 @@
     border-radius: 8px;
     background: var(--surface-raised, #eff2ec);
   }
+  .pressing-facts > div.fact-wide {
+    grid-column: 1 / -1;
+  }
+  .pressing-facts > div.fact-wide dd {
+    white-space: pre-line;
+    font-weight: 500;
+    line-height: 1.6;
+  }
   .pressing-facts dt {
     color: var(--text-muted, #4f6058);
     font-size: 13.5px;
@@ -971,12 +1094,16 @@
     list-style: disc;
   }
   .pressing-dialog {
-    width: min(760px, calc(100% - 32px));
+    width: min(560px, calc(100% - 48px));
+  }
+  .pressing-dialog.dialog-lg {
+    width: min(800px, calc(100% - 48px));
   }
   .pressing-dialog[open],
   .pressing-dialog form {
     display: flex;
     flex-direction: column;
+    flex: 1 1 auto;
     min-height: 0;
   }
   .pressing-dialog .modal-head,
@@ -1150,8 +1277,10 @@
     font-variant-numeric: tabular-nums;
   }
   .raw-clay-detail-body {
-    padding: 18px 22px 22px;
+    padding: 20px 24px 24px;
     overflow-y: auto;
+    flex: 1 1 auto;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     gap: 14px;
@@ -1207,6 +1336,11 @@
     }
     .clay-filters .clay-filter-search {
       grid-column: span 1;
+    }
+  }
+  @media (max-width: 480px) {
+    .weight-row {
+      grid-template-columns: 1fr;
     }
   }
 }

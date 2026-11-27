@@ -25,7 +25,7 @@ export default function ProductionSettings({product,data,actions,onClose}:{produ
    await actions.onSaved('บันทึกค่าผลิตแล้ว');onClose();
   }catch(e){setError(e instanceof Error?e.message:'บันทึกไม่สำเร็จ');}finally{setBusy(false);}
  }
- return <Modal title={`ตั้งค่าผลิต · ${product.product_code} · #${product.id}`} onClose={onClose} busy={busy}>
+ return <Modal title={`ตั้งค่าผลิต · ${product.product_code} · #${product.id}`} onClose={onClose} busy={busy} size="lg">
   <form onSubmit={save}><div className="modal-body"><fieldset disabled={busy} className="pressing-fieldset">
    <div className="form-grid">
     <Choice label="แบบดินปั๊มที่ยืนยัน" name="body_id" value={bodyId} onChange={v=>{setBodyId(v);setClayId('');setColorId('');}} empty="สร้างแบบสำหรับรายการนี้" options={data.bodies.map(b=>({value:b.id,label:`${b.name} · #${b.id}`}))}/>

@@ -129,7 +129,7 @@ export default function RawClayPanel({api,user}:{api:Api;user:SessionUser}){
     </div>
    </div>
   </Section>}
-  {detail&&!editor&&<Modal title={`${kindLabels[detail.document.kind]} · ${detail.document.number}`} busy={busy} guardDismissal onClose={()=>{if(!pending.current){setDetail(null);setCancelling(false);}}}>
+  {detail&&!editor&&<Modal title={`${kindLabels[detail.document.kind]} · ${detail.document.number}`} busy={busy} guardDismissal size="lg" onClose={()=>{if(!pending.current){setDetail(null);setCancelling(false);}}}>
    <div className="raw-clay-detail-body">
     <div className="status-cell"><StatusPill status={detail.document.status}/><span className="version-tag">ฉบับ {detail.document.version}</span></div>
     {uncertain&&<aside className="error-banner" role="alert"><span>ยังไม่ทราบผลบันทึก</span><button className="button primary" disabled={busy} onClick={()=>{if(pending.current)void mutate(pending.current.body,pending.current.body.revision);}}>ลองคำขอเดิมอีกครั้ง</button></aside>}

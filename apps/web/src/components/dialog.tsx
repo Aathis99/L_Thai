@@ -79,9 +79,11 @@ export default function Dialog({
       setBusy(false);
     }
   }
+  const isWide = state.kind === "editor" && state.view !== "positions";
   return (
     <dialog
       ref={ref}
+      className={isWide ? "dialog-lg" : undefined}
       aria-labelledby="modal-title"
       onCancel={(event) => {
         event.preventDefault();

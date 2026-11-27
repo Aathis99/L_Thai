@@ -69,7 +69,7 @@ function GeometryFields({ item }: { item?: CatalogGeometry }) {
 }
 
 export function ProductForm({ product, ...dialog }: DialogProps & { product?: CatalogProduct }) {
-  return <FormDialog {...dialog} scope="catalog" title={product ? "แก้ไขรายการสินค้า" : "เพิ่มรายการสินค้า"}
+  return <FormDialog {...dialog} scope="catalog" size="lg" title={product ? "แก้ไขรายการสินค้า" : "เพิ่มรายการสินค้า"}
     path={product ? `/products/${product.id}` : "/products"} method={product ? "PUT" : "POST"} submitLabel="บันทึกรายการสินค้า"
     build={form => ({ ...geometryValues(form), product_code: formText(form, "product_code"), name: formText(form, "name"),
       description_raw: formText(form, "description_raw"), notes: formText(form, "notes") || null,
