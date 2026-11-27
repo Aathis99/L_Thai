@@ -1,37 +1,100 @@
-/* Shared display surfaces. Existing light colors use their local fallbacks. */
+/* Shared display surfaces: Warm Low-Glare Sage palette (60-30-10) for long work sessions. */
 :root {
   color-scheme: light;
+  --color-factory-ink: #1e2c26;
+  --color-factory-paper: #f4f5f1;
+  --color-factory-green: #1f5e4b;
+  --color-factory-deep: #184c3c;
+  --color-factory-muted: #4f6058;
+  --color-factory-line: #d8dfd9;
+  --color-factory-clay: #a85e40;
+
+  --surface: #fcfdfb;
+  --surface-sidebar: #ecefe9;
+  --surface-raised: #eff2ec;
+  --surface-hover: #e7ece5;
+  --surface-deep: #184c3c;
+  --border: #d8dfd9;
+  --border-strong: #c2ccc4;
+  --focus: #1f5e4b;
+  --text-main: #1e2c26;
+  --text-muted: #4f6058;
+  --on-primary: #ffffff;
+
+  --clay-soft: #f6eae4;
+  --success-bg: #e4f2ea;
+  --success-text: #18563a;
+  --success-border: #b8dec7;
+  --success-dot: #1e7a4e;
+
+  --warning-bg: #fbf0dc;
+  --warning-text: #7c4a03;
+  --warning-border: #e7ca94;
+  --warning-dot: #b7740b;
+
+  --danger-solid: #a63330;
+  --danger-solid-hover: #8c2826;
+  --danger-soft: #fce8e6;
+  --danger-text: #992e2b;
+  --danger-border: #eabbb7;
+  --danger-dot: #c03935;
+
+  --neutral-bg: #eaeeeb;
+  --neutral-text: #44524b;
+  --neutral-border: #cfd8d2;
 }
 
 @theme inline {
-  --color-display-surface: var(--surface, #ffffff);
-  --color-display-raised: var(--surface-raised, #f2f5f0);
-  --color-display-text: var(--text-main, #263c35);
-  --color-display-muted: var(--text-muted, #60736a);
-  --color-display-border: var(--border, #e7ebe5);
+  --color-display-surface: var(--surface, #fcfdfb);
+  --color-display-raised: var(--surface-raised, #eff2ec);
+  --color-display-text: var(--text-main, #1e2c26);
+  --color-display-muted: var(--text-muted, #4f6058);
+  --color-display-border: var(--border, #d8dfd9);
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --color-factory-ink: #e4e7eb;
-  --color-factory-paper: #16181b;
-  --color-factory-green: #8ab4f8;
-  --color-factory-deep: #abcaff;
-  --color-factory-muted: #aeb6c2;
-  --color-factory-line: #414750;
-  --color-factory-clay: #e7b18b;
-  --surface: #202327;
-  --surface-raised: #2a2e34;
-  --surface-deep: #191c20;
-  --border: #414750;
-  --focus: #8ab4f8;
-  --text-main: #e4e7eb;
-  --text-muted: #aeb6c2;
-  --on-primary: #16181b;
-  --danger-solid: #93483e;
-  --danger-soft: #3d2828;
-  --danger-text: #f4aaa0;
-  --warning-text: #e8c58c;
+  --color-factory-ink: #e6ebe7;
+  --color-factory-paper: #171a18;
+  --color-factory-green: #78c2a4;
+  --color-factory-deep: #8dceb3;
+  --color-factory-muted: #a6b3ac;
+  --color-factory-line: #353d37;
+  --color-factory-clay: #e0a484;
+
+  --surface: #202421;
+  --surface-sidebar: #1c201d;
+  --surface-raised: #272c28;
+  --surface-hover: #2c322d;
+  --surface-deep: #151916;
+  --border: #353d37;
+  --border-strong: #465048;
+  --focus: #78c2a4;
+  --text-main: #e6ebe7;
+  --text-muted: #a6b3ac;
+  --on-primary: #111a16;
+
+  --clay-soft: #352720;
+  --success-bg: #1c3428;
+  --success-text: #9be0bc;
+  --success-border: #2f5943;
+  --success-dot: #6ad29e;
+
+  --warning-bg: #382c19;
+  --warning-text: #f0c982;
+  --warning-border: #634c26;
+  --warning-dot: #e5b45b;
+
+  --danger-solid: #b8423e;
+  --danger-solid-hover: #cc4e4a;
+  --danger-soft: #3e2222;
+  --danger-text: #f4a8a4;
+  --danger-border: #6e3a38;
+  --danger-dot: #eb8580;
+
+  --neutral-bg: #2d322f;
+  --neutral-text: #c6d0ca;
+  --neutral-border: #434b46;
 }
 
 @layer components {
@@ -41,38 +104,45 @@
     width: 40px;
     height: 40px;
     flex-shrink: 0;
-    border: 1px solid var(--color-factory-line);
-    border-radius: 8px;
-    margin-inline-start: 8px;
-    background: transparent;
-    color: var(--color-factory-ink);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    margin-inline-start: 6px;
+    background: var(--surface);
+    color: var(--text-main);
   }
-  .theme-toggle:hover { background: var(--surface-raised, #edf2ec); }
-  .theme-toggle:focus-visible { outline: 2px solid var(--focus, #739582); }
+  .theme-toggle:hover { background: var(--surface-hover); }
+  .theme-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   .theme-moon { display: none; }
   [data-theme="dark"] .theme-sun { display: none; }
   [data-theme="dark"] .theme-moon { display: block; }
   .auth-theme-toggle { position: absolute; top: 16px; right: 20px; }
-  .auth-theme-toggle .theme-toggle { background: var(--surface, #fcfcf9); }
+  .auth-theme-toggle .theme-toggle { background: var(--surface); }
 }
 
 /* Intentional contrasts and statuses shared by every module. */
 [data-theme="dark"] .auth-story {
-  background: #191c20;
+  background: #151916;
   color: var(--text-main);
 }
-[data-theme="dark"] .brand-mark { color: #e4e7eb; }
-[data-theme="dark"] .primary:hover { color: #16181b; }
+[data-theme="dark"] .brand-mark { color: #111a16; }
+[data-theme="dark"] .primary:hover { color: #111a16; }
 [data-theme="dark"] .field input,
 [data-theme="dark"] .field select,
 [data-theme="dark"] .field textarea,
-[data-theme="dark"] select#filter { background: #191c20; }
-[data-theme="dark"] .good { background: #21392d; color: #a1d9b4; }
-[data-theme="dark"] .muted-badge { background: #3b3324; color: #e8c58c; }
-[data-theme="dark"] .neutral { background: #30343b; color: #c4cbd5; }
+[data-theme="dark"] select#filter { background: #191d1a; border-color: var(--border-strong); }
+[data-theme="dark"] .good { background: var(--success-bg); color: var(--success-text); }
+[data-theme="dark"] .muted-badge { background: var(--warning-bg); color: var(--warning-text); }
+[data-theme="dark"] .neutral { background: var(--neutral-bg); color: var(--neutral-text); }
 
 @media (max-width: 760px) {
-  .topbar { height: auto; min-height: 52px; flex-wrap: wrap; padding-block: 6px; }
+  .topbar { height: auto; min-height: 54px; flex-wrap: wrap; padding-block: 8px; }
   .topbar-right { margin-inline-start: auto; }
   .auth-theme-toggle { position: fixed; top: 10px; right: 12px; z-index: 2; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }

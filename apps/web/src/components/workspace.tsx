@@ -20,7 +20,6 @@ import {
   emptyRecords,
   labels,
   subtitles,
-  symbols,
   views,
   type Api,
   type Records,
@@ -30,6 +29,50 @@ import {
 
 type WorkspaceView = View | "pressing" | "category" | "glazing" | "firing" | "qc" | "stock" | "raw-clay";
 const workspaceViews: WorkspaceView[] = [...views, "category", "raw-clay", "stock", "pressing", "glazing", "firing", "qc"];
+
+const navGroups: { id: string; title: string; views: WorkspaceView[] }[] = [
+  { id: "production", title: "สายการผลิต", views: ["raw-clay", "pressing", "glazing", "firing", "qc", "stock"] },
+  { id: "master", title: "ข้อมูลหลัก", views: ["category"] },
+  { id: "people", title: "บุคลากรและระบบ", views: ["employees", "positions", "roles", "users", "audit"] },
+];
+
+function NavIcon({ name, size = 18 }: { name: WorkspaceView | "factory" | "logout" | "search" | "active"; size?: number }) {
+  const props = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
+  switch (name) {
+    case "raw-clay":
+      return <svg {...props}><path d="M3 17h18l-2-9H5l-2 9Z" /><path d="M8 8V6a4 4 0 0 1 8 0v2" /><path d="M2 20h20" /></svg>;
+    case "pressing":
+      return <svg {...props}><rect x="4" y="4" width="16" height="6" rx="1" /><path d="M12 10v4" /><rect x="3" y="14" width="18" height="6" rx="1" /></svg>;
+    case "glazing":
+      return <svg {...props}><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" /></svg>;
+    case "firing":
+      return <svg {...props}><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z" /></svg>;
+    case "qc":
+      return <svg {...props}><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>;
+    case "stock":
+      return <svg {...props}><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>;
+    case "category":
+      return <svg {...props}><path d="M12 2 2 7l10 5 10-5-10-5Z" /><path d="m2 17 10 5 10-5" /><path d="m2 12 10 5 10-5" /></svg>;
+    case "employees":
+      return <svg {...props}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>;
+    case "positions":
+      return <svg {...props}><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg>;
+    case "roles":
+      return <svg {...props}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>;
+    case "users":
+      return <svg {...props}><circle cx="12" cy="8" r="4" /><path d="M20 21a8 8 0 0 0-16 0" /></svg>;
+    case "audit":
+      return <svg {...props}><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>;
+    case "factory":
+      return <svg {...props}><rect x="3" y="3" width="8" height="8" rx="1.5" /><rect x="13" y="3" width="8" height="8" rx="1.5" /><rect x="3" y="13" width="8" height="8" rx="1.5" /><rect x="13" y="13" width="8" height="8" rx="1.5" /></svg>;
+    case "logout":
+      return <svg {...props}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>;
+    case "search":
+      return <svg {...props}><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>;
+    case "active":
+      return <svg {...props}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>;
+  }
+}
 
 function canOpenView(user: SessionUser, view: WorkspaceView) {
   if (view === "raw-clay") return user.permissions.includes("raw_clay.read");
@@ -292,38 +335,41 @@ export default function Workspace() {
           <div className="workspace-label">พื้นที่ทำงานของโรงงาน</div>
           <div className="factory-label">
             <span className="factory-icon" aria-hidden="true">
-              ▧
+              <NavIcon name="factory" size={18} />
             </span>
             <div>
-              โรงงานกระเบื้อง<small>จัดการข้อมูลพื้นฐาน</small>
+              โรงงานกระเบื้อง<small>ระบบการผลิตและข้อมูลหลัก</small>
             </div>
             <span className="live-dot" />
-          </div>
-          <div className="nav-title">
-            {showFactoryNav ? "เมนูโรงงาน" : "บุคลากรและการเข้าถึง"}
           </div>
           <nav
             aria-label="เมนูหลัก"
             className={showFactoryNav ? "nav-has-factory" : undefined}
           >
-            {workspaceViews
-              .filter((candidate) => canOpenView(user, candidate))
-              .map((candidate) => (
-                <button
-                  key={candidate}
-                  onClick={() => void navigate(candidate)}
-                  className={`nav-item ${view === candidate ? "selected" : ""}`}
-                  aria-current={view === candidate ? "page" : undefined}
-                  aria-label={candidate === "pressing" ? "งานปั๊ม" : undefined}
-                >
-                  <span aria-hidden="true">
-                    {candidate === "pressing" ? "▧" : candidate === "category" ? "◈" : candidate === "glazing" ? "◒" :
-                      candidate === "firing" ? "▤" : candidate === "qc" ? "✓" : candidate === "stock" ? "▦" : candidate === "raw-clay" ? "▥" : symbols[candidate]}
-                  </span>
-                  {workspaceLabel(candidate)}
-                  {candidate === "employees" && <small>{current.length}</small>}
-                </button>
-              ))}
+            {navGroups.map((group) => {
+              const items = group.views.filter((candidate) => canOpenView(user, candidate));
+              if (!items.length) return null;
+              return (
+                <div key={group.id} className="nav-group">
+                  <div className="nav-group-title">{group.title}</div>
+                  {items.map((candidate) => (
+                    <button
+                      key={candidate}
+                      onClick={() => void navigate(candidate)}
+                      className={`nav-item ${view === candidate ? "selected" : ""}`}
+                      aria-current={view === candidate ? "page" : undefined}
+                      aria-label={candidate === "pressing" ? "งานปั๊ม" : undefined}
+                    >
+                      <span aria-hidden="true">
+                        <NavIcon name={candidate} />
+                      </span>
+                      {workspaceLabel(candidate)}
+                      {candidate === "employees" && <small>{current.length}</small>}
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
           </nav>
           {!showFactoryNav && (
             <div className="roadmap">
@@ -354,7 +400,7 @@ export default function Workspace() {
               title="ออกจากระบบ"
               aria-label="ออกจากระบบ"
             >
-              ↪
+              <NavIcon name="logout" size={18} />
             </button>
           </div>
         </aside>
@@ -433,7 +479,7 @@ export default function Workspace() {
               <section className="stats" aria-label="ภาพรวมพนักงาน">
                 <article>
                   <span className="stat-icon sand" aria-hidden="true">
-                    ♙
+                    <NavIcon name="employees" size={20} />
                   </span>
                   <div>
                     <span>พนักงานทั้งหมด</span>
@@ -446,7 +492,7 @@ export default function Workspace() {
                 </article>
                 <article>
                   <span className="stat-icon mint" aria-hidden="true">
-                    ✓
+                    <NavIcon name="active" size={20} />
                   </span>
                   <div>
                     <span>กำลังปฏิบัติงาน</span>
@@ -459,7 +505,7 @@ export default function Workspace() {
                 </article>
                 <article>
                   <span className="stat-icon clay" aria-hidden="true">
-                    ▤
+                    <NavIcon name="positions" size={20} />
                   </span>
                   <div>
                     <span>ตำแหน่งงาน</span>
@@ -503,7 +549,7 @@ export default function Workspace() {
                   </div>
                   <div className="toolbar-controls">
                     <label className="search">
-                      <span aria-hidden="true">⌕</span>
+                      <span aria-hidden="true"><NavIcon name="search" size={16} /></span>
                       <input
                         aria-label={`ค้นหา${labels[recordView]}`}
                         placeholder={`ค้นหา${recordView === "employees" ? "ชื่อ รหัส หรือแผนก" : labels[recordView]}…`}

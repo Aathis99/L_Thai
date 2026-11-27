@@ -1,48 +1,128 @@
-/* Action colors shared by every module. */
+/* 4-tier functional action colors shared by every module (LThai Design System Master). */
 :root {
-  --button-create: #245bb5;
-  --button-confirm: #237044;
-  --button-warning: #8a5700;
-  --button-danger: #b33d3d;
+  --button-create: #1f5e4b;
+  --button-create-hover: #184c3c;
+  --button-confirm: #1f5e4b;
+  --button-confirm-hover: #184c3c;
+  --button-warning-bg: #fbf0dc;
+  --button-warning-text: #7c4a03;
+  --button-warning-border: #e7ca94;
+  --button-danger-bg: #fce8e6;
+  --button-danger-text: #992e2b;
+  --button-danger-border: #eabbb7;
+  --button-danger: #a63330;
+  --button-danger-hover: #8c2826;
   --button-on-color: #ffffff;
-  --button-neutral: #edf0f4;
-  --button-on-neutral: #344054;
-  --button-selected: #e8f0ff;
-  --button-on-selected: #245bb5;
-  --button-warning-text: #8a5700;
-  --button-danger-text: #b33d3d;
+  --button-neutral: #eaeeeb;
+  --button-neutral-hover: #dde4df;
+  --button-on-neutral: #24332c;
+  --button-selected: #e2efe9;
+  --button-on-selected: #184c3c;
 }
 
 :root[data-theme="dark"] {
-  --button-create: #8ab4f8;
-  --button-confirm: #81c995;
-  --button-warning: #d9b56f;
-  --button-danger: #e89595;
-  --button-on-color: #16181b;
-  --button-neutral: #2a2e34;
-  --button-on-neutral: #e4e7eb;
-  --button-selected: #26364d;
-  --button-on-selected: #a8c7fa;
-  --button-warning-text: #d9b56f;
-  --button-danger-text: #e89595;
+  --button-create: #78c2a4;
+  --button-create-hover: #8dceb3;
+  --button-confirm: #78c2a4;
+  --button-confirm-hover: #8dceb3;
+  --button-warning-bg: #382c19;
+  --button-warning-text: #f0c982;
+  --button-warning-border: #634c26;
+  --button-danger-bg: #3e2222;
+  --button-danger-text: #f4a8a4;
+  --button-danger-border: #6e3a38;
+  --button-danger: #b8423e;
+  --button-danger-hover: #cc4e4a;
+  --button-on-color: #111a16;
+  --button-neutral: #2b312d;
+  --button-neutral-hover: #343b36;
+  --button-on-neutral: #e6ebe7;
+  --button-selected: #1f352c;
+  --button-on-selected: #a3dfc6;
 }
 
-.button.primary { background: var(--button-create); color: var(--button-on-color); }
-.button.success { background: var(--button-confirm); color: var(--button-on-color); }
-.button.warning { background: var(--button-warning); color: var(--button-on-color); }
-.button.destructive { background: var(--button-danger); color: var(--button-on-color); }
-.button.secondary { background: var(--button-neutral); color: var(--button-on-neutral); }
-.button.secondary.danger { color: var(--button-danger-text); }
-.button.tab-selected,
-.nav-item.selected { background: var(--button-selected); color: var(--button-on-selected); }
+/* Tier 1: Primary & Confirm */
+.button.primary {
+  background: var(--button-create);
+  color: var(--button-on-color);
+  border-color: transparent;
+}
+.button.primary:hover:not(:disabled) {
+  background: var(--button-create-hover);
+  color: var(--button-on-color);
+}
+.button.success {
+  background: var(--button-confirm);
+  color: var(--button-on-color);
+  border-color: transparent;
+}
+.button.success:hover:not(:disabled) {
+  background: var(--button-confirm-hover);
+  color: var(--button-on-color);
+}
 
-.button:hover:not(:disabled) { filter: brightness(0.94); }
-.button.primary:hover { background: var(--button-create); color: var(--button-on-color); }
-.button.secondary:hover { background: var(--button-neutral); }
+/* Tier 2: Secondary / Neutral */
+.button.secondary {
+  background: var(--button-neutral);
+  color: var(--button-on-neutral);
+  border-color: var(--border);
+}
+.button.secondary:hover:not(:disabled) {
+  background: var(--button-neutral-hover);
+}
+
+/* Tier 3: Warning / Correction with reason */
+.button.warning {
+  background: var(--button-warning-bg);
+  color: var(--button-warning-text);
+  border-color: var(--button-warning-border);
+}
+.button.warning:hover:not(:disabled) {
+  filter: brightness(0.96);
+}
+
+/* Tier 4: Danger soft (initiate cancel/delete) & Destructive solid (final confirm) */
+.button.danger-soft,
+.button.secondary.danger {
+  background: var(--button-danger-bg);
+  color: var(--button-danger-text);
+  border-color: var(--button-danger-border);
+}
+.button.danger-soft:hover:not(:disabled),
+.button.secondary.danger:hover:not(:disabled) {
+  filter: brightness(0.96);
+}
+.button.destructive {
+  background: var(--button-danger);
+  color: #ffffff;
+  border-color: transparent;
+}
+.button.destructive:hover:not(:disabled) {
+  background: var(--button-danger-hover);
+  color: #ffffff;
+}
+
+/* Active tabs and sidebar selection */
+.button.tab-selected {
+  background: var(--button-selected);
+  color: var(--button-on-selected);
+  border-color: var(--button-create);
+  font-weight: 700;
+}
+.nav-item.selected {
+  background: var(--button-selected);
+  color: var(--button-on-selected);
+  font-weight: 700;
+}
+
 .table-button.warning { color: var(--button-warning-text); }
 .table-button.danger,
 .pressing-actions .danger { color: var(--button-danger-text); }
+
 .button:focus-visible,
 .table-button:focus-visible,
-.nav-item:focus-visible { outline: 2px solid var(--button-create); outline-offset: 3px; }
+.nav-item:focus-visible {
+  outline: 2px solid var(--focus, var(--button-create));
+  outline-offset: 2px;
+}
 button:disabled { cursor: not-allowed; }
